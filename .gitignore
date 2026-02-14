@@ -1,0 +1,28 @@
+# Mac / editor noise
+.DS_Store
+
+# Keep this repo focused on your OpenClaw runtime config + brain docs
+.cursor/
+openclaw/
+
+# OpenClaw VPS: do not commit live secrets/runtime state
+openclaw-vps/.openclaw/openclaw.json
+openclaw-vps/.openclaw/openclaw.json.bak*
+openclaw-vps/.openclaw/agents/
+openclaw-vps/.openclaw/media/
+openclaw-vps/.openclaw/completions/
+openclaw-vps/.openclaw/devices/
+openclaw-vps/.openclaw/canvas/
+openclaw-vps/.openclaw/update-check.json
+openclaw-vps/.openclaw/telegram/update-offset-*.json
+openclaw-vps/.openclaw/logs/
+openclaw-vps/.openclaw/identity/
+openclaw-vps/.openclaw/cron/jobs.json.bak
+
+# Ignore accidental nested repos/symlink mirrors from skill installers
+openclaw-vps/.openclaw/workspace/.git/
+openclaw-vps/.openclaw/workspace-corey/.git/
+openclaw-vps/.openclaw/workspace-tony/.git/
+openclaw-vps/.openclaw/workspace/skills/
+openclaw-vps/.openclaw/workspace-corey/skills/
+openclaw-vps/.openclaw/workspace-tony/skills/
