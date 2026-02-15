@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "description": "Allowed Mission Control status transitions. Enforced by the mongo-mission-control tooling to keep task history consistent.",
+  "initial_status": "todo",
+  "allowed_transitions": {
+    "todo": [
+      "in_progress",
+      "blocked"
+    ],
+    "in_progress": [
+      "review",
+      "blocked",
+      "todo"
+    ],
+    "review": [
+      "done",
+      "in_progress",
+      "blocked"
+    ],
+    "blocked": [
+      "todo",
+      "in_progress"
+    ],
+    "done": []
+  },
+  "trigger_rules": {
+    "READY": {
+      "description": "Task can be claimed by the assignee.",
+      "allowed_statuses": [
+        "todo",
+        "in_progress",
+        "review",
+        "blocked"
+      ]
+    },
+    "WAITING": {
+      "description": "Task is dependency-gated and cannot be claimed.",
+      "allowed_statuses": [
+        "todo"
+      ]
+    },
+    "RETRY": {
+      "description": "Task can be re-attempted after a failure or external unblock.",
+      "allowed_statuses": [
+        "todo",
+        "blocked"
+      ]
+    }
+  }
+}

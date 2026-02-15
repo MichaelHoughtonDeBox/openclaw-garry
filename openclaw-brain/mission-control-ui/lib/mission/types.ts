@@ -31,6 +31,7 @@ export type TaskDocument = {
   task_name: string
   description: string
   assignee: Assignee
+  labels?: string[]
   status: TaskStatus
   priority: TaskPriority
   trigger_state: TaskTriggerState
@@ -42,10 +43,12 @@ export type TaskDocument = {
   updated_at: string
 }
 
-export type Task = Omit<TaskDocument, "_id" | "dependencies" | "linked_document_ids"> & {
+export type Task = Omit<TaskDocument, "_id" | "dependencies" | "linked_document_ids" | "labels"> & {
   id: string
+  labels: string[]
   dependencies: string[]
   linked_document_ids: string[]
+  message_count: number
 }
 
 export type ActivitySource = (typeof ACTIVITY_SOURCES)[number]

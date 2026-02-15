@@ -51,6 +51,7 @@ export async function POST(request: Request) {
       task_name: payload.task_name,
       description: payload.description,
       assignee: payload.assignee,
+      labels: payload.labels,
       priority: payload.priority,
       dependencies: payload.dependencies,
       linked_document_ids: payload.linked_document_ids,

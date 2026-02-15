@@ -76,6 +76,25 @@ export type DocumentsQuery = {
   limit?: number
 }
 
+export type ActivitiesQuery = {
+  source?: "cron" | "heartbeat" | "task" | "system" | "operator" | "document"
+  status?: "ok" | "error" | "skipped" | "info"
+  assignee?: Assignee
+  eventType?: string
+  before?: string
+  limit?: number
+}
+
+export type MissionStreamTick = {
+  revision: string
+  taskCursor: string
+  activityCursor: string
+  notificationCursor: string
+  documentCursor: string
+  pendingNotificationCount: number
+  serverTime: string
+}
+
 export async function fetchTasks(): Promise<TasksResponse> {
   const response = await fetch("/api/tasks", { cache: "no-store" })
   return parseJson<TasksResponse>(response)
@@ -87,14 +106,34 @@ export async function fetchReviewQueue(): Promise<Task[]> {
   return payload.tasks
 }
 
-export async function fetchActivities(limit = 40): Promise<Activity[]> {
-  const response = await fetch(`/api/activities?limit=${limit}`, { cache: "no-store" })
+export async function fetchActivities(query: ActivitiesQuery = {}): Promise<Activity[]> {
+  const params = new URLSearchParams()
+  if (query.source) {
+    params.set("source", query.source)
+  }
+  if (query.status) {
+    params.set("status", query.status)
+  }
+  if (query.assignee) {
+    params.set("assignee", query.assignee)
+  }
+  if (query.eventType) {
+    params.set("eventType", query.eventType)
+  }
+  if (query.before) {
+    params.set("before", query.before)
+  }
+  if (query.limit) {
+    params.set("limit", String(query.limit))
+  }
+  const search = params.toString()
+  const response = await fetch(`/api/activities${search ? `?${search}` : ""}`, { cache: "no-store" })
   const payload = await parseJson<{ activities: Activity[] }>(response)
   return payload.activities
 }
 
-export async function fetchAgentHealth(): Promise<AgentHealth[]> {
-  const response = await fetch("/api/agents/health", { cache: "no-store" })
+export async function fetchAgentHealth(scope: "all" | "active_defaults" = "all"): Promise<AgentHealth[]> {
+  const response = await fetch(`/api/agents/health?scope=${scope}`, { cache: "no-store" })
   const payload = await parseJson<{ health: AgentHealth[] }>(response)
   return payload.health
 }
@@ -207,8 +246,8 @@ export async function fetchDashboardSnapshot(limit = 40): Promise<DashboardSnaps
   const [tasks, reviewQueue, activities, health] = await Promise.all([
     fetchTasks(),
     fetchReviewQueue(),
-    fetchActivities(limit),
-    fetchAgentHealth(),
+    fetchActivities({ limit }),
+    fetchAgentHealth("all"),
   ])
 
   return {
@@ -219,10 +258,57 @@ export async function fetchDashboardSnapshot(limit = 40): Promise<DashboardSnaps
   }
 }
 
+export function openMissionStream(input: {
+  onConnected?: (payload: { pollIntervalMs: number; serverTime: string }) => void
+  onTick: (payload: MissionStreamTick) => void
+  onError?: (message: string) => void
+}) {
+  const stream = new EventSource("/api/stream")
+
+  stream.addEventListener("connected", (event) => {
+    try {
+      const payload = JSON.parse((event as MessageEvent).data) as {
+        pollIntervalMs: number
+        serverTime: string
+      }
+      input.onConnected?.(payload)
+    } catch {
+      // Ignore malformed handshake packets.
+    }
+  })
+
+  stream.addEventListener("tick", (event) => {
+    try {
+      const payload = JSON.parse((event as MessageEvent).data) as MissionStreamTick
+      input.onTick(payload)
+    } catch {
+      input.onError?.("Mission stream payload parsing failed.")
+    }
+  })
+
+  stream.addEventListener("error", (event) => {
+    try {
+      const payload = JSON.parse((event as MessageEvent).data) as { message?: string }
+      input.onError?.(payload.message ?? "Mission stream reported an error.")
+    } catch {
+      input.onError?.("Mission stream disconnected.")
+    }
+  })
+
+  stream.onerror = () => {
+    input.onError?.("Mission stream connection lost.")
+  }
+
+  return () => {
+    stream.close()
+  }
+}
+
 export async function createTask(input: {
   task_name: string
   description: string
   assignee: Assignee
+  labels: string[]
   priority: TaskPriority
   dependencies: string[]
   linked_document_ids: string[]

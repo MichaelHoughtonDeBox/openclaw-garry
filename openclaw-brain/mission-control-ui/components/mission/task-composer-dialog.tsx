@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { ASSIGNEES } from "@/lib/mission/constants"
 import type { Assignee, MissionDocument, TaskPriority } from "@/lib/mission/types"
 
 type TaskComposerDialogProps = {
@@ -33,6 +34,7 @@ type TaskComposerDialogProps = {
     task_name: string
     description: string
     assignee: Assignee
+    labels: string[]
     priority: TaskPriority
     dependencies: string[]
     linked_document_ids: string[]
@@ -45,10 +47,20 @@ export function TaskComposerDialog({ operator, availableDocuments, disabled, onC
   const [taskName, setTaskName] = useState("")
   const [description, setDescription] = useState("")
   const [assignee, setAssignee] = useState<Assignee>("corey")
+  const [labelsRaw, setLabelsRaw] = useState("")
   const [priority, setPriority] = useState<TaskPriority>("normal")
   const [dependenciesRaw, setDependenciesRaw] = useState("")
   const [linkedDocumentIds, setLinkedDocumentIds] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
+
+  const labels = useMemo(
+    () =>
+      labelsRaw
+        .split(",")
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean),
+    [labelsRaw],
+  )
 
   const dependencies = useMemo(
     () =>
@@ -70,6 +82,7 @@ export function TaskComposerDialog({ operator, availableDocuments, disabled, onC
         task_name: taskName.trim(),
         description: description.trim(),
         assignee,
+        labels,
         priority,
         dependencies,
         linked_document_ids: linkedDocumentIds,
@@ -77,6 +90,7 @@ export function TaskComposerDialog({ operator, availableDocuments, disabled, onC
       })
       setTaskName("")
       setDescription("")
+      setLabelsRaw("")
       setDependenciesRaw("")
       setLinkedDocumentIds([])
       setPriority("normal")
@@ -90,7 +104,7 @@ export function TaskComposerDialog({ operator, availableDocuments, disabled, onC
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
       <AlertDialogTrigger asChild>
-        <Button disabled={disabled} size="sm">
+        <Button disabled={disabled} size="sm" className="h-8 shrink-0 whitespace-nowrap px-2.5">
           <ListChecks />
           Create Task
         </Button>
@@ -138,9 +152,11 @@ export function TaskComposerDialog({ operator, availableDocuments, disabled, onC
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="garry">garry</SelectItem>
-                  <SelectItem value="corey">corey</SelectItem>
-                  <SelectItem value="tony">tony</SelectItem>
+                  {ASSIGNEES.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {candidate}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -160,6 +176,17 @@ export function TaskComposerDialog({ operator, availableDocuments, disabled, onC
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="space-y-1">
+            <p className="flex items-center gap-1 text-xs font-medium">
+              <FileStack className="size-3.5" />
+              Labels (optional)
+            </p>
+            <Input
+              value={labelsRaw}
+              onChange={(event) => setLabelsRaw(event.target.value)}
+              placeholder="phase-1, seo, pricing"
+            />
           </div>
           <div className="space-y-1">
             <p className="flex items-center gap-1 text-xs font-medium">

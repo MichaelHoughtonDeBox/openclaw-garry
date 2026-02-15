@@ -18,6 +18,7 @@ export const createTaskSchema = z.object({
   task_name: z.string().min(3).max(160),
   description: z.string().min(5).max(12_000),
   assignee: z.enum(ASSIGNEES),
+  labels: z.array(z.string().trim().min(1).max(32)).max(12).default([]),
   priority: z.enum(TASK_PRIORITIES).default("normal"),
   dependencies: z.array(objectIdSchema).default([]),
   linked_document_ids: z.array(objectIdSchema).default([]),

@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "description": "Mission Control assignee mapping. sessionKey and openclawAgentId let automation route work without code changes when adding agents.",
+  "agents": [
+    {
+      "assignee": "garry",
+      "displayName": "Garry",
+      "role": "Squad Lead",
+      "level": "lead",
+      "openclawAgentId": "main",
+      "sessionKey": "agent:main:main",
+      "active": true
+    },
+    {
+      "assignee": "corey",
+      "displayName": "Corey",
+      "role": "Product Marketing Specialist",
+      "level": "specialist",
+      "openclawAgentId": "corey",
+      "sessionKey": "agent:corey:main",
+      "active": true
+    },
+    {
+      "assignee": "tony",
+      "displayName": "Tony",
+      "role": "Lead Engineer",
+      "level": "specialist",
+      "openclawAgentId": "tony",
+      "sessionKey": "agent:tony:main",
+      "active": true
+    },
+    {
+      "assignee": "shuri",
+      "displayName": "Shuri",
+      "role": "Product Analyst",
+      "level": "specialist",
+      "openclawAgentId": "shuri",
+      "sessionKey": "agent:shuri:main",
+      "active": false
+    },
+    {
+      "assignee": "ralph",
+      "displayName": "Ralph",
+      "role": "Research Specialist",
+      "level": "specialist",
+      "openclawAgentId": "ralph",
+      "sessionKey": "agent:ralph:main",
+      "active": true
+    },
+    {
+      "assignee": "vision",
+      "displayName": "Vision",
+      "role": "SEO Analyst",
+      "level": "specialist",
+      "sessionKey": "agent:seo-analyst:main",
+      "active": false
+    },
+    {
+      "assignee": "loki",
+      "displayName": "Loki",
+      "role": "Content Writer",
+      "level": "specialist",
+      "sessionKey": "agent:content-writer:main",
+      "active": false
+    },
+    {
+      "assignee": "quill",
+      "displayName": "Quill",
+      "role": "Social Media Manager",
+      "level": "specialist",
+      "sessionKey": "agent:social-media-manager:main",
+      "active": false
+    },
+    {
+      "assignee": "wanda",
+      "displayName": "Wanda",
+      "role": "Designer",
+      "level": "specialist",
+      "sessionKey": "agent:designer:main",
+      "active": false
+    },
+    {
+      "assignee": "pepper",
+      "displayName": "Pepper",
+      "role": "Email Marketing Specialist",
+      "level": "specialist",
+      "sessionKey": "agent:email-marketing:main",
+      "active": false
+    },
+    {
+      "assignee": "friday",
+      "displayName": "Friday",
+      "role": "Developer",
+      "level": "specialist",
+      "openclawAgentId": "friday",
+      "sessionKey": "agent:friday:main",
+      "active": false
+    },
+    {
+      "assignee": "wong",
+      "displayName": "Wong",
+      "role": "Documentation Specialist",
+      "level": "specialist",
+      "openclawAgentId": "wong",
+      "sessionKey": "agent:wong:main",
+      "active": false
+    },
+    {
+      "assignee": "michael",
+      "displayName": "Michael",
+      "role": "Human Approver",
+      "level": "owner",
+      "active": true
+    }
+  ]
+}

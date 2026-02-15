@@ -105,6 +105,24 @@ function extractMentions(content: string): Assignee[] {
   return [...mentions]
 }
 
+function normalizeLabels(labels: string[]): string[] {
+  // Keep labels deterministic so cards can render compact chips without duplicates or whitespace drift.
+  const seen = new Set<string>()
+  const normalized: string[] = []
+  for (const label of labels) {
+    const candidate = label.trim().toLowerCase()
+    if (!candidate || seen.has(candidate)) {
+      continue
+    }
+    seen.add(candidate)
+    normalized.push(candidate)
+    if (normalized.length >= 12) {
+      break
+    }
+  }
+  return normalized
+}
+
 function toTask(doc: TaskDocument): Task {
   if (!doc._id) {
     throw new Error("Task document is missing _id")
@@ -114,11 +132,13 @@ function toTask(doc: TaskDocument): Task {
     task_name: doc.task_name,
     description: doc.description,
     assignee: doc.assignee,
+    labels: doc.labels ?? [],
     status: doc.status,
     priority: doc.priority,
     trigger_state: doc.trigger_state,
     dependencies: (doc.dependencies ?? []).map((dependency) => String(dependency)),
     linked_document_ids: (doc.linked_document_ids ?? []).map((documentId) => String(documentId)),
+    message_count: 0,
     output_data: doc.output_data,
     agent_logs: doc.agent_logs ?? [],
     created_at: doc.created_at,
@@ -254,7 +274,7 @@ function isTransitionAllowed(from: TaskStatus, to: TaskStatus) {
 
 export async function listTasks(filters: ListTasksFilters = {}) {
   await ensureMissionIndexes()
-  const { tasks } = await getMissionCollections()
+  const { tasks, messages } = await getMissionCollections()
 
   const query: Record<string, unknown> = {}
   if (filters.status) {
@@ -285,9 +305,35 @@ export async function listTasks(filters: ListTasksFilters = {}) {
       return new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
     })
 
+  const taskObjectIds = docs.flatMap((doc) => (doc._id ? [doc._id] : []))
+  let messageCountByTaskId = new Map<string, number>()
+  if (taskObjectIds.length > 0) {
+    const messageCounts = await messages
+      .aggregate<{ _id: ObjectId; count: number }>([
+        {
+          $match: {
+            taskId: { $in: taskObjectIds },
+          },
+        },
+        {
+          $group: {
+            _id: "$taskId",
+            count: { $sum: 1 },
+          },
+        },
+      ])
+      .toArray()
+    messageCountByTaskId = new Map(messageCounts.map((item) => [String(item._id), item.count]))
+  }
+
+  const enrichedTasks = normalized.map((task) => ({
+    ...task,
+    message_count: messageCountByTaskId.get(task.id) ?? 0,
+  }))
+
   return {
-    tasks: normalized,
-    grouped: buildStatusGroups(normalized),
+    tasks: enrichedTasks,
+    grouped: buildStatusGroups(enrichedTasks),
   }
 }
 
@@ -295,6 +341,7 @@ export async function createTask(input: {
   task_name: string
   description: string
   assignee: Assignee
+  labels: string[]
   priority: TaskPriority
   dependencies: string[]
   linked_document_ids: string[]
@@ -309,6 +356,7 @@ export async function createTask(input: {
   const linkedDocumentIds = [...new Set(input.linked_document_ids)].map((documentId) =>
     parseObjectId(documentId, "document id"),
   )
+  const labels = normalizeLabels(input.labels)
   const triggerState =
     input.trigger_state ?? (dependencies.length > 0 ? ("WAITING" satisfies TaskTriggerState) : ("READY" satisfies TaskTriggerState))
 
@@ -332,6 +380,7 @@ export async function createTask(input: {
     task_name: input.task_name,
     description: input.description,
     assignee: input.assignee,
+    labels,
     status: "todo",
     priority: input.priority,
     trigger_state: triggerState,
@@ -366,6 +415,7 @@ export async function createTask(input: {
     metadata: {
       operator: input.operator,
       priority: input.priority,
+      labels,
       dependencyCount: dependencies.length,
       linkedDocumentCount: linkedDocumentIds.length,
     },
@@ -880,8 +930,8 @@ export async function listDocuments(filters: ListDocumentsFilters = {}) {
   if (filters.q) {
     andClauses.push({
       $or: [
-      { title: { $regex: filters.q, $options: "i" } },
-      { contentMd: { $regex: filters.q, $options: "i" } },
+        { title: { $regex: filters.q, $options: "i" } },
+        { contentMd: { $regex: filters.q, $options: "i" } },
       ],
     })
   }
@@ -1201,16 +1251,20 @@ export async function ingestActivities(events: Omit<ActivityDocument, "_id">[]) 
   return { insertedCount }
 }
 
-export async function getAgentHealth() {
+export async function getAgentHealth(input: { scope?: "all" | "active_defaults" } = {}) {
   const { tasks, activities, documents } = await getMissionCollections()
-  const taskDocs = await tasks.find({ assignee: { $in: [...ACTIVE_DEFAULT_ASSIGNEES] } }).toArray()
+  const roster: Assignee[] =
+    input.scope === "active_defaults"
+      ? [...ACTIVE_DEFAULT_ASSIGNEES] as Assignee[]
+      : [...ASSIGNEES] as Assignee[]
+  const taskDocs = await tasks.find({ assignee: { $in: roster } }).toArray()
   const documentDocs = await documents
-    .find({ assignee: { $in: [...ACTIVE_DEFAULT_ASSIGNEES] } })
+    .find({ assignee: { $in: roster } })
     .project<Pick<MissionDocumentRecord, "assignee" | "taskId">>({ assignee: 1, taskId: 1 })
     .toArray()
   const latestActivities = await activities
     .aggregate<{ assignee: Assignee; created_at: string; message: string; status: ActivityStatus }>([
-      { $match: { assignee: { $in: [...ACTIVE_DEFAULT_ASSIGNEES] } } },
+      { $match: { assignee: { $in: roster } } },
       { $sort: { created_at: -1 } },
       {
         $group: {
@@ -1227,7 +1281,7 @@ export async function getAgentHealth() {
     .aggregate<{ assignee: Assignee; nextRunAtMs?: number }>([
       {
         $match: {
-          assignee: { $in: [...ACTIVE_DEFAULT_ASSIGNEES] },
+          assignee: { $in: roster },
           source: "cron",
           "metadata.nextRunAtMs": { $exists: true },
         },
@@ -1247,7 +1301,7 @@ export async function getAgentHealth() {
   const latestCronByAssigneeMap = new Map(latestCronByAssignee.map((item) => [item.assignee, item.nextRunAtMs]))
   const now = Date.now()
 
-  const health = [...ACTIVE_DEFAULT_ASSIGNEES].map<AgentHealth>((assignee) => {
+  const health = roster.map<AgentHealth>((assignee) => {
     const assigneeTasks = taskDocs.filter((task) => task.assignee === assignee)
     const assigneeDocuments = documentDocs.filter((document) => document.assignee === assignee)
     const lastActivity = latestByAssignee.get(assignee)
@@ -1290,4 +1344,31 @@ export async function getAgentHealth() {
   })
 
   return health
+}
+
+export async function getRealtimeSignals() {
+  const { tasks, activities, notifications, documents } = await getMissionCollections()
+  const [latestTask, latestActivity, latestNotification, latestDocument, pendingNotificationCount] = await Promise.all([
+    tasks.find({}, { projection: { updated_at: 1 } }).sort({ updated_at: -1 }).limit(1).next(),
+    activities.find({}, { projection: { created_at: 1 } }).sort({ created_at: -1 }).limit(1).next(),
+    notifications.find({}, { projection: { updated_at: 1 } }).sort({ updated_at: -1 }).limit(1).next(),
+    documents.find({}, { projection: { updated_at: 1 } }).sort({ updated_at: -1 }).limit(1).next(),
+    notifications.countDocuments({ status: "pending" }),
+  ])
+
+  const taskCursor = latestTask?.updated_at ?? "0"
+  const activityCursor = latestActivity?.created_at ?? "0"
+  const notificationCursor = latestNotification?.updated_at ?? "0"
+  const documentCursor = latestDocument?.updated_at ?? "0"
+  const revision = `${taskCursor}|${activityCursor}|${notificationCursor}|${documentCursor}|${pendingNotificationCount}`
+
+  return {
+    revision,
+    taskCursor,
+    activityCursor,
+    notificationCursor,
+    documentCursor,
+    pendingNotificationCount,
+    serverTime: nowIso(),
+  }
 }

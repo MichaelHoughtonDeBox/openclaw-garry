@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mission-control.task",
+  "title": "MissionControlTask",
+  "description": "Canonical task contract for Mission Control.",
+  "type": "object",
+  "required": [
+    "task_name",
+    "description",
+    "assignee",
+    "status",
+    "priority",
+    "trigger_state",
+    "dependencies",
+    "output_data",
+    "agent_logs",
+    "created_at",
+    "updated_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "_id": {
+      "description": "Mongo ObjectId represented as a hex string when serialized.",
+      "type": "string",
+      "pattern": "^[a-fA-F0-9]{24}$"
+    },
+    "task_name": {
+      "description": "Human-readable task title.",
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 160
+    },
+    "description": {
+      "description": "Execution brief for the assignee.",
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 12000
+    },
+    "assignee": {
+      "description": "Mission Control assignee slug.",
+      "type": "string",
+      "enum": [
+        "garry",
+        "corey",
+        "tony",
+        "michael",
+        "shuri",
+        "ralph",
+        "vision",
+        "loki",
+        "quill",
+        "wanda",
+        "pepper",
+        "friday",
+        "wong"
+      ]
+    },
+    "status": {
+      "description": "Task lifecycle state.",
+      "type": "string",
+      "enum": [
+        "todo",
+        "in_progress",
+        "blocked",
+        "review",
+        "done"
+      ]
+    },
+    "priority": {
+      "description": "Priority used for scheduling preference.",
+      "type": "string",
+      "enum": [
+        "urgent",
+        "normal",
+        "low"
+      ]
+    },
+    "trigger_state": {
+      "description": "Execution gate controlled by orchestration.",
+      "type": "string",
+      "enum": [
+        "READY",
+        "WAITING",
+        "RETRY"
+      ]
+    },
+    "dependencies": {
+      "description": "Blocking prerequisite tasks by ObjectId.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-fA-F0-9]{24}$"
+      },
+      "uniqueItems": true
+    },
+    "output_data": {
+      "description": "Normalized execution output for review and reporting.",
+      "type": "object",
+      "required": [
+        "link",
+        "summary"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "link": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "summary": {
+          "type": "string",
+          "maxLength": 12000
+        }
+      }
+    },
+    "agent_logs": {
+      "description": "Append-only execution logs written by agents.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "timestamp",
+          "agent",
+          "message"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "agent": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 64
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        }
+      }
+    },
+    "created_at": {
+      "description": "Task creation time in ISO8601 UTC format.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "description": "Last mutation time in ISO8601 UTC format.",
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

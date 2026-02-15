@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { MarkdownViewer } from "@/components/mission/markdown-viewer"
-import { ACTIVE_DEFAULT_ASSIGNEES, DOCUMENT_SOURCES } from "@/lib/mission/constants"
+import { ASSIGNEES, DOCUMENT_SOURCES } from "@/lib/mission/constants"
 import type { Assignee, DocumentSource, MissionDocument } from "@/lib/mission/types"
 
 type DocumentFilters = {
@@ -70,7 +70,7 @@ export function DocumentListPanel({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__all_assignees">All assignees</SelectItem>
-                {ACTIVE_DEFAULT_ASSIGNEES.map((assignee) => (
+                {ASSIGNEES.map((assignee) => (
                   <SelectItem key={assignee} value={assignee}>
                     {assignee}
                   </SelectItem>

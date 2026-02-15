@@ -2,6 +2,19 @@
 
 Skills define _how_ tools work. This file is for _your_ specifics — the stuff that's unique to your setup.
 
+## Corey Marketing Skill Access
+
+These skills are available in this workspace under `.agents/skills/*/SKILL.md`.
+Read the relevant `SKILL.md` before execution when a task matches the trigger.
+
+- **Context and strategy:** `product-marketing-context`, `content-strategy`, `launch-strategy`, `pricing-strategy`, `marketing-ideas`, `marketing-psychology`, `free-tool-strategy`
+- **Acquisition and channels:** `programmatic-seo`, `seo-audit`, `schema-markup`, `paid-ads`, `social-content`, `email-sequence`, `referral-program`
+- **Conversion optimization:** `page-cro`, `form-cro`, `popup-cro`, `signup-flow-cro`, `onboarding-cro`, `paywall-upgrade-cro`, `ab-test-setup`, `analytics-tracking`
+- **Messaging and positioning:** `copywriting`, `copy-editing`, `competitor-alternatives`
+
+Operational note:
+- `mongo-mission-control` is available for Mission Control task workflow and artifact delivery, but it is not a marketing strategy skill.
+
 ## What Goes Here
 
 Things like:

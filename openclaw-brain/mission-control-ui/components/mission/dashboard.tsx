@@ -1,21 +1,20 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { LayoutDashboard, Link2, RefreshCcw } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Link2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
-import { ActivityFeed } from "@/components/mission/activity-feed"
-import { AgentHealthCards } from "@/components/mission/agent-health-cards"
+import { AgentsRail } from "@/components/mission/agents-rail"
 import { DocumentComposerDialog } from "@/components/mission/document-composer-dialog"
 import { DocumentDetailSheet } from "@/components/mission/document-detail-sheet"
 import { DocumentListPanel } from "@/components/mission/document-list-panel"
 import { KanbanBoard } from "@/components/mission/kanban-board"
+import { LiveFeedPanel } from "@/components/mission/live-feed-panel"
 import { ReviewQueuePanel } from "@/components/mission/review-queue-panel"
 import { TaskComposerDialog } from "@/components/mission/task-composer-dialog"
 import { TaskDetailSheet } from "@/components/mission/task-detail-sheet"
+import { TopCommandBar } from "@/components/mission/top-command-bar"
 import {
+  ackNotificationDelivery,
   appendTaskLog,
   createTaskMessage,
   createDocument,
@@ -24,17 +23,23 @@ import {
   fetchTaskMessages,
   fetchDocuments,
   fetchDashboardSnapshot,
+  fetchNotifications,
   linkDocumentToTask,
+  openMissionStream,
   releaseDependencies,
   transitionTaskStatus,
   updateDocument,
   type DashboardSnapshot,
+  type MissionStreamTick,
 } from "@/lib/mission/client"
 import { TASK_STATUSES } from "@/lib/mission/constants"
+import { type FeedScope } from "@/lib/mission/presentation"
 import type {
   Assignee,
   DocumentSource,
   MissionDocument,
+  Notification,
+  NotificationStatus,
   Task,
   AgentHealth,
   TaskMessage,
@@ -61,10 +66,18 @@ function groupTasks(tasks: Task[]) {
 }
 
 function patchSnapshotTask(snapshot: DashboardSnapshot, task: Task): DashboardSnapshot {
+  const previousTask = snapshot.tasks.tasks.find((candidate) => candidate.id === task.id)
+  const mergedTask =
+    previousTask && task.message_count === 0
+      ? {
+          ...task,
+          message_count: previousTask.message_count,
+        }
+      : task
   const existing = snapshot.tasks.tasks.some((candidate) => candidate.id === task.id)
   const tasks = existing
-    ? snapshot.tasks.tasks.map((candidate) => (candidate.id === task.id ? task : candidate))
-    : [task, ...snapshot.tasks.tasks]
+    ? snapshot.tasks.tasks.map((candidate) => (candidate.id === mergedTask.id ? mergedTask : candidate))
+    : [mergedTask, ...snapshot.tasks.tasks]
   const grouped = groupTasks(tasks)
   return {
     ...snapshot,
@@ -73,19 +86,31 @@ function patchSnapshotTask(snapshot: DashboardSnapshot, task: Task): DashboardSn
   }
 }
 
-const POLL_INTERVAL_MS = 7_000
+const POLL_INTERVAL_MS = 30_000
 
 export function MissionControlDashboard() {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null)
   const [documents, setDocuments] = useState<MissionDocument[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [notificationsLoading, setNotificationsLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [selectedDocument, setSelectedDocument] = useState<MissionDocument | null>(null)
   const [taskMessagesByTaskId, setTaskMessagesByTaskId] = useState<Record<string, TaskMessage[]>>({})
   const [taskMessagesLoading, setTaskMessagesLoading] = useState(false)
+  const [boardFilter, setBoardFilter] = useState<"all" | "focused" | TaskStatus>("all")
+  const [boardSearch, setBoardSearch] = useState("")
+  const [focusedAssignee, setFocusedAssignee] = useState<Assignee | undefined>()
+  const [feedScope, setFeedScope] = useState<FeedScope>("all")
+  const [feedAssignee, setFeedAssignee] = useState<Assignee | undefined>()
+  const [notificationStatusFilter, setNotificationStatusFilter] = useState<NotificationStatus | "all">("all")
+  const [notificationAssigneeFilter, setNotificationAssigneeFilter] = useState<Assignee | undefined>()
+  const [streamConnected, setStreamConnected] = useState(false)
+  const [lastReloadDurationMs, setLastReloadDurationMs] = useState<number | undefined>(undefined)
+  const [pendingNotificationCount, setPendingNotificationCount] = useState(0)
   const [documentFilters, setDocumentFilters] = useState<{
     assignee?: Assignee
     source?: DocumentSource
@@ -96,6 +121,8 @@ export function MissionControlDashboard() {
     taskId: "",
   })
   const [operator, setOperator] = useState("michael")
+  const lastStreamRevisionRef = useRef<string>("")
+  const reloadInFlightRef = useRef(false)
 
   const selectedTask = useMemo(
     () => snapshot?.tasks.tasks.find((task) => task.id === selectedTaskId) ?? null,
@@ -110,6 +137,16 @@ export function MissionControlDashboard() {
     return documents.filter((document) => linkedIds.has(document.id))
   }, [documents, selectedTask])
 
+  const queueSize = useMemo(
+    () => (snapshot?.tasks.tasks ?? []).filter((task) => task.status !== "done").length,
+    [snapshot?.tasks.tasks],
+  )
+
+  const activeAgentCount = useMemo(
+    () => (snapshot?.health ?? []).filter((agent) => !agent.stale).length,
+    [snapshot?.health],
+  )
+
   const activeMentionAssignees = useMemo(() => {
     const health = snapshot?.health ?? []
     if (health.length === 0) {
@@ -121,35 +158,85 @@ export function MissionControlDashboard() {
   }, [snapshot?.health])
 
   const reload = useCallback(async () => {
+    if (reloadInFlightRef.current) {
+      return
+    }
+    reloadInFlightRef.current = true
+    const startedAt = performance.now()
     try {
       setError(null)
       setRefreshing(true)
+      setNotificationsLoading(true)
+      const effectiveDocumentAssignee = documentFilters.assignee ?? focusedAssignee
+      const effectiveNotificationAssignee = notificationAssigneeFilter ?? focusedAssignee
+      const effectiveNotificationStatus =
+        notificationStatusFilter === "all" ? undefined : notificationStatusFilter
+
       // Keep task/health/activity data and document artifacts in sync on each poll cycle.
-      const [nextSnapshot, nextDocuments] = await Promise.all([
+      const [nextSnapshot, nextDocuments, nextNotifications, pendingNotifications] = await Promise.all([
         fetchDashboardSnapshot(),
         fetchDocuments({
-          assignee: documentFilters.assignee,
+          assignee: effectiveDocumentAssignee,
           source: documentFilters.source,
           q: documentFilters.q.trim() || undefined,
           taskId: documentFilters.taskId.trim() || undefined,
           limit: 40,
         }),
+        fetchNotifications({
+          assignee: effectiveNotificationAssignee,
+          status: effectiveNotificationStatus,
+          limit: 60,
+        }),
+        fetchNotifications({
+          status: "pending",
+          limit: 120,
+        }),
       ])
       setSnapshot(nextSnapshot)
       setDocuments(nextDocuments.documents)
+      setNotifications(nextNotifications.notifications)
+      setPendingNotificationCount(pendingNotifications.notifications.length)
+      setLastReloadDurationMs(Math.max(1, Math.round(performance.now() - startedAt)))
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : "Failed to load dashboard data."
       setError(message)
     } finally {
+      reloadInFlightRef.current = false
       setRefreshing(false)
+      setNotificationsLoading(false)
       setLoading(false)
     }
-  }, [documentFilters])
+  }, [documentFilters, focusedAssignee, notificationAssigneeFilter, notificationStatusFilter])
 
   useEffect(() => {
-    reload()
+    void reload()
     const timer = window.setInterval(reload, POLL_INTERVAL_MS)
     return () => window.clearInterval(timer)
+  }, [reload])
+
+  useEffect(() => {
+    const unsubscribe = openMissionStream({
+      onConnected: () => {
+        setStreamConnected(true)
+      },
+      onTick: (payload: MissionStreamTick) => {
+        setStreamConnected(true)
+        setPendingNotificationCount(payload.pendingNotificationCount)
+        if (payload.revision === lastStreamRevisionRef.current) {
+          return
+        }
+        lastStreamRevisionRef.current = payload.revision
+        void reload()
+      },
+      onError: () => {
+        setStreamConnected(false)
+      },
+    })
+
+    return () => {
+      setStreamConnected(false)
+      unsubscribe()
+    }
   }, [reload])
 
   useEffect(() => {
@@ -317,6 +404,49 @@ export function MissionControlDashboard() {
     }
   }
 
+  async function handleAcknowledgeNotification(input: {
+    notificationId: string
+    status: "delivered" | "failed"
+    error?: string
+  }) {
+    setBusy(true)
+    try {
+      await ackNotificationDelivery({
+        notificationId: input.notificationId,
+        status: input.status,
+        error: input.error,
+        operator,
+      })
+      await reload()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleDropStatusChange(input: { taskId: string; toStatus: TaskStatus }) {
+    await handleTransitionStatus({
+      taskId: input.taskId,
+      toStatus: input.toStatus,
+      note: `Status moved from board drag/drop to ${input.toStatus}`,
+    })
+  }
+
+  function handleFocusAssignee(assignee?: Assignee) {
+    setFocusedAssignee(assignee)
+    setBoardFilter((current) => {
+      if (assignee) {
+        return "focused"
+      }
+      return current === "focused" ? "all" : current
+    })
+    setFeedAssignee(assignee)
+    setNotificationAssigneeFilter(assignee)
+    setDocumentFilters((current) => ({
+      ...current,
+      assignee,
+    }))
+  }
+
   async function handleOpenDocumentById(documentId: string) {
     const existingDocument = documents.find((document) => document.id === documentId)
     if (existingDocument) {
@@ -334,62 +464,59 @@ export function MissionControlDashboard() {
   }
 
   return (
-    <main className="min-h-screen bg-background p-4 sm:p-6">
-      <div className="mx-auto max-w-7xl space-y-4">
-        <Card>
-          <CardHeader className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <LayoutDashboard className="size-4" />
-                  Mission Control
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Observe agent execution and close task loops without leaving the board.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  value={operator}
-                  onChange={(event) => setOperator(event.target.value)}
-                  className="w-44"
-                  placeholder="operator name"
-                />
-                <TaskComposerDialog
-                  operator={operator}
-                  availableDocuments={documents}
-                  disabled={busy}
-                  onCreateTask={handleCreateTask}
-                />
-                <DocumentComposerDialog
-                  operator={operator}
-                  disabled={busy}
-                  defaultAssignee="corey"
-                  defaultAgentId="corey"
-                  onCreateDocument={handleCreateDocument}
-                />
-                <Button
-                  disabled={busy || refreshing}
-                  variant="outline"
-                  size="sm"
-                  onClick={handleReleaseDependencies}
-                >
-                  <Link2 className="size-3.5" />
-                  Release dependencies
-                </Button>
-                <Button disabled={refreshing} variant="outline" size="sm" onClick={reload}>
-                  <RefreshCcw className={`size-3 ${refreshing ? "animate-spin" : ""}`} />
-                  Refresh
-                </Button>
-              </div>
-            </div>
-            <Separator />
-            {error ? <p className="text-xs text-destructive">{error}</p> : null}
-            {loading ? <p className="text-xs text-muted-foreground">Loading dashboard...</p> : null}
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <AgentHealthCards health={snapshot?.health ?? []} />
+    <main className="min-h-screen bg-background px-4 py-4 sm:px-6">
+      <div className="mx-auto max-w-[1800px] space-y-3">
+        <TopCommandBar
+          operator={operator}
+          onOperatorChange={setOperator}
+          activeAgents={activeAgentCount}
+          totalAgents={(snapshot?.health ?? []).length}
+          queuedTasks={queueSize}
+          pendingNotifications={pendingNotificationCount}
+          refreshing={refreshing}
+          streamConnected={streamConnected}
+          lastReloadDurationMs={lastReloadDurationMs}
+          onRefresh={() => void reload()}
+          actions={
+            <>
+              <TaskComposerDialog
+                operator={operator}
+                availableDocuments={documents}
+                disabled={busy}
+                onCreateTask={handleCreateTask}
+              />
+              <DocumentComposerDialog
+                operator={operator}
+                disabled={busy}
+                defaultAssignee={focusedAssignee ?? "corey"}
+                defaultAgentId={focusedAssignee ?? "corey"}
+                onCreateDocument={handleCreateDocument}
+              />
+              <Button
+                disabled={busy || refreshing}
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={handleReleaseDependencies}
+              >
+                <Link2 className="size-3.5" />
+                Release deps
+              </Button>
+            </>
+          }
+        />
 
+        {error ? <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p> : null}
+        {loading ? <p className="rounded-lg border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground">Loading dashboard...</p> : null}
+
+        <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)_380px]">
+          <AgentsRail
+            health={snapshot?.health ?? []}
+            focusedAssignee={focusedAssignee}
+            onFocusAssignee={handleFocusAssignee}
+          />
+
+          <section className="space-y-3">
             <KanbanBoard
               grouped={
                 snapshot?.tasks.grouped ?? {
@@ -400,12 +527,25 @@ export function MissionControlDashboard() {
                   done: [],
                 }
               }
+              allTasks={snapshot?.tasks.tasks ?? []}
+              boardFilter={boardFilter}
+              search={boardSearch}
+              assigneeFilter={focusedAssignee}
+              busy={busy}
               selectedTaskId={selectedTaskId ?? undefined}
+              onBoardFilterChange={setBoardFilter}
+              onSearchChange={setBoardSearch}
               onSelectTask={(task) => setSelectedTaskId(task.id)}
+              onDropStatusChange={handleDropStatusChange}
             />
 
-            <div className="grid gap-4 xl:grid-cols-2">
-              <ReviewQueuePanel tasks={snapshot?.reviewQueue ?? []} onOpenTask={(task) => setSelectedTaskId(task.id)} />
+            <div className="grid gap-3 xl:grid-cols-2">
+              <ReviewQueuePanel
+                tasks={(snapshot?.reviewQueue ?? []).filter((task) =>
+                  focusedAssignee ? task.assignee === focusedAssignee : true,
+                )}
+                onOpenTask={(task) => setSelectedTaskId(task.id)}
+              />
               <DocumentListPanel
                 documents={documents}
                 filters={documentFilters}
@@ -413,9 +553,25 @@ export function MissionControlDashboard() {
                 onOpenDocument={(document) => setSelectedDocument(document)}
               />
             </div>
-            <ActivityFeed activities={snapshot?.activities ?? []} />
-          </CardContent>
-        </Card>
+          </section>
+
+          <LiveFeedPanel
+            activities={snapshot?.activities ?? []}
+            notifications={notifications}
+            feedScope={feedScope}
+            feedAssignee={feedAssignee}
+            notificationStatusFilter={notificationStatusFilter}
+            notificationAssigneeFilter={notificationAssigneeFilter}
+            loadingNotifications={notificationsLoading}
+            busy={busy}
+            onFeedScopeChange={setFeedScope}
+            onFeedAssigneeChange={setFeedAssignee}
+            onNotificationStatusFilterChange={setNotificationStatusFilter}
+            onNotificationAssigneeFilterChange={setNotificationAssigneeFilter}
+            onAcknowledgeNotification={handleAcknowledgeNotification}
+            onOpenTask={(taskId) => setSelectedTaskId(taskId)}
+          />
+        </div>
       </div>
 
       <TaskDetailSheet

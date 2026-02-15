@@ -1,0 +1,32 @@
+{
+  "name": "openclaw-mission-control-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Mission Control helper scripts for OpenClaw VPS workspaces.",
+  "scripts": {
+    "mission:create": "node ./mission-control-cli.mjs task_create",
+    "mission:poll": "node ./mission-control-cli.mjs task_poll_ready_for_assignee",
+    "mission:claim": "node ./mission-control-cli.mjs task_claim",
+    "mission:append-log": "node ./mission-control-cli.mjs task_append_log",
+    "mission:transition": "node ./mission-control-cli.mjs task_transition_status",
+    "mission:block": "node ./mission-control-cli.mjs task_mark_blocked",
+    "mission:complete": "node ./mission-control-cli.mjs task_complete_with_output",
+    "mission:document:create": "node ./mission-control-cli.mjs document_create",
+    "mission:document:get": "node ./mission-control-cli.mjs document_get",
+    "mission:document:list": "node ./mission-control-cli.mjs document_list",
+    "mission:document:link": "node ./mission-control-cli.mjs document_link_to_task",
+    "mission:release": "node ./mission-control-cli.mjs task_release_dependencies",
+    "mission:indexes": "node ./mission-control-cli.mjs task_bootstrap_indexes",
+    "mission:backfill-documents": "node ./mission-control-backfill-documents.mjs",
+    "mission:report": "node ./mission-control-report.mjs",
+    "mission:standup": "node ./mission-control-standup.mjs",
+    "mission:smoke": "node ./mission-control-smoke.mjs"
+  },
+  "dependencies": {
+    "mongodb": "^6.21.0"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^10.3.0"
+  }
+}

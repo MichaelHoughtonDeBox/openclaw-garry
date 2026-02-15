@@ -1,4 +1,125 @@
 {
   "version": 1,
-  "jobs": []
+  "jobs": [
+    {
+      "id": "mc-corey-poll",
+      "agentId": "corey",
+      "name": "Mission Control - Corey Poll",
+      "description": "Corey polls Mission Control queue and executes one claimed task.",
+      "enabled": true,
+      "createdAtMs": 1771064971000,
+      "updatedAtMs": 1771064971000,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0,15,30,45 * * * *",
+        "tz": "UTC"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
+        "model": "openrouter/google/gemini-3-pro-preview",
+        "thinking": "low",
+        "timeoutSeconds": 180
+      },
+      "delivery": {
+        "mode": "none"
+      },
+      "state": {
+        "nextRunAtMs": 1771074000000
+      }
+    },
+    {
+      "id": "mc-tony-poll",
+      "agentId": "tony",
+      "name": "Mission Control - Tony Poll",
+      "description": "Tony polls Mission Control queue and executes one claimed task.",
+      "enabled": true,
+      "createdAtMs": 1771064971001,
+      "updatedAtMs": 1771073226632,
+      "schedule": {
+        "kind": "cron",
+        "expr": "2,17,32,47 * * * *",
+        "tz": "UTC"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
+        "model": "openrouter/google/gemini-3-flash-preview",
+        "thinking": "low",
+        "timeoutSeconds": 180
+      },
+      "delivery": {
+        "mode": "none"
+      },
+      "state": {
+        "nextRunAtMs": 1771074120000,
+        "lastRunAtMs": 1771073220016,
+        "lastStatus": "ok",
+        "lastDurationMs": 6616,
+        "consecutiveErrors": 0
+      }
+    },
+    {
+      "id": "mc-ralph-poll",
+      "agentId": "ralph",
+      "name": "Mission Control - Ralph Poll",
+      "description": "Ralph polls Mission Control queue and executes one claimed task.",
+      "enabled": true,
+      "createdAtMs": 1771073226633,
+      "updatedAtMs": 1771073226633,
+      "schedule": {
+        "kind": "cron",
+        "expr": "6,21,36,51 * * * *",
+        "tz": "UTC"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
+        "model": "openrouter/google/gemini-3-flash-preview",
+        "thinking": "low",
+        "timeoutSeconds": 180
+      },
+      "delivery": {
+        "mode": "none"
+      },
+      "state": {
+        "nextRunAtMs": 1771074360000
+      }
+    },
+    {
+      "id": "mc-garry-orchestrator",
+      "agentId": "main",
+      "name": "Mission Control - Garry Orchestrator",
+      "description": "Garry releases dependency-gated tasks and checks review queue.",
+      "enabled": true,
+      "createdAtMs": 1771064971002,
+      "updatedAtMs": 1771064971002,
+      "schedule": {
+        "kind": "cron",
+        "expr": "4,19,34,49 * * * *",
+        "tz": "UTC"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
+        "model": "openrouter/google/gemini-3-flash-preview",
+        "thinking": "low",
+        "timeoutSeconds": 180
+      },
+      "delivery": {
+        "mode": "none"
+      },
+      "state": {
+        "nextRunAtMs": 1771073340000
+      }
+    }
+  ]
 }

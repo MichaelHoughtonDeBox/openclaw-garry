@@ -11,6 +11,7 @@ import { TaskMessageThread } from "@/components/mission/task-message-thread"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
 import { TaskPriorityBadge, TaskStatusBadge, TriggerStateBadge } from "@/components/mission/status-badge"
 import type { DocumentSource, MissionDocument, Task, TaskMessage, TaskStatus } from "@/lib/mission/types"
 
@@ -127,7 +128,7 @@ export function TaskDetailSheet({
   }
 
   return (
-    <aside className="fixed inset-y-0 right-0 z-30 w-full border-l bg-background p-4 shadow-xl sm:w-[480px]">
+    <aside className="fixed inset-y-0 left-0 z-30 w-full border-r bg-background p-4 shadow-xl sm:w-[480px]">
       <Card className="h-full">
         <CardHeader className="space-y-2">
           <div className="flex items-center justify-between gap-3">
@@ -148,6 +149,16 @@ export function TaskDetailSheet({
             <p>Operator: {operator}</p>
             <p>Updated: {new Date(task.updated_at).toLocaleString()}</p>
           </div>
+
+          {task.labels.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {task.labels.map((label) => (
+                <Badge key={`${task.id}-${label}`} variant="outline" className="rounded-md text-[10px]">
+                  {label}
+                </Badge>
+              ))}
+            </div>
+          ) : null}
 
           <Separator />
 

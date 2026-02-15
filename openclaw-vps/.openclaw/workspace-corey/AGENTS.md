@@ -125,6 +125,13 @@ Skills provide your tools. When you need one, check its `SKILL.md`. Keep local n
 - **Discord links:** Wrap multiple links in `<>` to suppress embeds: `<https://example.com>`
 - **WhatsApp:** No headers — use **bold** or CAPS for emphasis
 
+## Mission Control Artifact Policy
+
+- For task reports/research/handoffs, write artifacts directly to Mission Control documents.
+- For text deliverables, use `document_create --content-md "<MARKDOWN>"` and link with `mongo://documents/<DOCUMENT_ID>`.
+- Do not stage deliverables in `memory/*.md` just to upload them afterward.
+- Use disk paths only for non-text binaries or explicit legacy imports (`--allow-content-file true`).
+
 ## 💓 Heartbeats - Be Proactive!
 
 When you receive a heartbeat poll (message matches the configured heartbeat prompt), don't just reply `HEARTBEAT_OK` every time. Use heartbeats productively!

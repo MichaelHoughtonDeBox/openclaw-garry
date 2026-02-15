@@ -8,6 +8,7 @@ Full-stack Next.js dashboard for OpenClaw Mission Control.
 - Review and approve agent output directly from the UI.
 - Show agent health and recent activity from Mongo-backed telemetry.
 - Run task-level threaded comments with `@mentions` and queued notifications.
+- Stream queue/feed invalidation signals over Server-Sent Events (`/api/stream`).
 - Expose API routes for task operations, observability, and telemetry ingest.
 
 ## Stack
@@ -95,6 +96,7 @@ curl -s "http://localhost:3000/api/documents?limit=5" | jq
 - `GET /api/review-queue`
 - `GET /api/activities`
 - `GET /api/agents/health`
+- `GET /api/stream`
 - `GET /api/notifications`
 - `POST /api/notifications/:id/deliver`
 - `GET /api/documents`

@@ -133,7 +133,7 @@ export function DocumentComposerDialog({
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
       <AlertDialogTrigger asChild>
-        <Button disabled={disabled} size="sm" variant="outline">
+        <Button disabled={disabled} size="sm" variant="outline" className="h-8 shrink-0 whitespace-nowrap px-2.5">
           <FilePenLine />
           {triggerLabel ?? "Create document"}
         </Button>

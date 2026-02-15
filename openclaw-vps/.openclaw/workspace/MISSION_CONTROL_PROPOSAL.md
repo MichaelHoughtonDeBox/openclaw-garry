@@ -7,34 +7,30 @@ A decoupled, polling-based agent coordination system. Instead of the main agent 
 - **Benefits:** High performance, flexible schema for evolving task requirements, and easy to build a custom Mission Control UI on top.
 - **Connection:** Managed via a dedicated OpenClaw skill (`mongo-mission-control`).
 
-## 3. Schema: `tasks` Collection
-Each document represents a discrete piece of work.
+## 3. Canonical Contracts (Locked)
+Mission Control contracts are now versioned in `workspace/mission-control/`:
 
-```json
-{
-  "_id": "ObjectId",
-  "task_name": "string",
-  "description": "string",
-  "assignee": "string (garry|corey|tony|michael)",
-  "status": "string (todo|in_progress|blocked|review|done)",
-  "priority": "string (urgent|normal|low)",
-  "trigger_state": "string (READY|WAITING|RETRY)",
-  "dependencies": ["Array of Task ObjectIds"],
-  "output_data": {
-    "link": "url/path",
-    "summary": "string"
-  },
-  "agent_logs": [
-    {
-      "timestamp": "ISO8601",
-      "agent": "string",
-      "message": "string"
-    }
-  ],
-  "created_at": "ISO8601",
-  "updated_at": "ISO8601"
-}
-```
+- `schema.task.json` - canonical task schema and enum constraints
+- `agents.json` - assignee-to-agent/session mapping (3 active, 10-agent ready)
+- `transitions.json` - strict status transition + trigger rules
+
+### Task enums (authoritative)
+- `status`: `todo | in_progress | blocked | review | done`
+- `priority`: `urgent | normal | low`
+- `trigger_state`: `READY | WAITING | RETRY`
+
+### Transition policy (authoritative)
+- `todo -> in_progress|blocked`
+- `in_progress -> review|blocked|todo`
+- `review -> done|in_progress|blocked`
+- `blocked -> todo|in_progress`
+- `done` is terminal
+
+### Claim guard (idempotency)
+Agents may claim only when all are true:
+1. `status = todo`
+2. `trigger_state = READY`
+3. `assignee` matches the polling agent
 
 ## 4. Agent Workflow (The "Pull" Model)
 1. **Intake:** Michael tells Garry an idea. Garry writes tasks to MongoDB.
@@ -44,7 +40,9 @@ Each document represents a discrete piece of work.
 4. **Completion:** Agent sets status to "done" and updates `updated_at`.
 5. **Orchestration:** Garry's heartbeat periodically checks for tasks where all dependencies are "done" and moves the dependent task's `trigger_state` to "READY".
 
-## 5. Next Steps
+## 5. Delivery Roadmap
+- [x] Lock schema + mapping + transition contracts in `workspace/mission-control/`.
 - [ ] Install MongoDB on the VPS (or connect to a remote cluster).
-- [ ] Create the `mongo-mission-control` skill.
-- [ ] Implement the first cron-based polling script for Corey.
+- [ ] Create and wire the `mongo-mission-control` skill actions.
+- [ ] Add isolated cron polling jobs for Corey/Tony + dependency release by Garry.
+- [ ] Add mission visibility scripts (status board + standup draft).
