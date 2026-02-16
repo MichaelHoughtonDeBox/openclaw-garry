@@ -93,6 +93,35 @@
       }
     },
     {
+      "id": "mc-sherlock-poll",
+      "agentId": "sherlock",
+      "name": "Mission Control - Sherlock Poll",
+      "description": "Sherlock polls Mission Control queue and executes one claimed task.",
+      "enabled": true,
+      "createdAtMs": 1771073226634,
+      "updatedAtMs": 1771073226634,
+      "schedule": {
+        "kind": "cron",
+        "expr": "8,23,38,53 * * * *",
+        "tz": "UTC"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
+        "model": "openrouter/google/gemini-3-flash-preview",
+        "thinking": "low",
+        "timeoutSeconds": 180
+      },
+      "delivery": {
+        "mode": "none"
+      },
+      "state": {
+        "nextRunAtMs": 1771074480000
+      }
+    },
+    {
       "id": "mc-garry-orchestrator",
       "agentId": "main",
       "name": "Mission Control - Garry Orchestrator",

@@ -21,7 +21,8 @@
     "mission:backfill-documents": "node ./mission-control-backfill-documents.mjs",
     "mission:report": "node ./mission-control-report.mjs",
     "mission:standup": "node ./mission-control-standup.mjs",
-    "mission:smoke": "node ./mission-control-smoke.mjs"
+    "mission:smoke": "node ./mission-control-smoke.mjs",
+    "sherlock:smoke": "node ./sherlock-smoke.mjs"
   },
   "dependencies": {
     "mongodb": "^6.21.0"

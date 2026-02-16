@@ -1,0 +1,15 @@
+{
+  "lastChecks": {
+    "sherlock_cycle": null,
+    "wolf_ingest_submit": null
+  },
+  "connectors": {
+    "x_api": {
+      "sinceId": null,
+      "lastRunAt": null
+    },
+    "perplexity_web": {
+      "lastRunAt": null
+    }
+  }
+}
