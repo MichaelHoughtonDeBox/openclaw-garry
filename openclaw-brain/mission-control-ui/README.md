@@ -71,11 +71,11 @@ Run this sequence after wiring `.env.local`:
 
 ```bash
 # 1) API smoke checks
-curl -s http://localhost:3000/api/tasks | jq
-curl -s http://localhost:3000/api/review-queue | jq
-curl -s "http://localhost:3000/api/activities?limit=5" | jq
-curl -s http://localhost:3000/api/agents/health | jq
-curl -s "http://localhost:3000/api/documents?limit=5" | jq
+curl -s http://localhost:7070/api/tasks | jq
+curl -s http://localhost:7070/api/review-queue | jq
+curl -s "http://localhost:7070/api/activities?limit=5" | jq
+curl -s http://localhost:7070/api/agents/health | jq
+curl -s "http://localhost:7070/api/documents?limit=5" | jq
 ```
 
 ```bash
@@ -107,10 +107,30 @@ curl -s "http://localhost:3000/api/documents?limit=5" | jq
 
 ## Security toggles
 
-- `MISSION_CONTROL_AUTH_ENABLED=true` to enable HTTP basic auth on app + API.
-- `MISSION_CONTROL_AUTH_USER` / `MISSION_CONTROL_AUTH_PASSWORD` for credentials.
+- `MISSION_CONTROL_AUTH_ENABLED=true` to enable MongoDB-based session auth on app + API.
+- `MISSION_CONTROL_SESSION_SECRET` – min 32 chars; signs session JWTs. Required when auth enabled.
+- `MISSION_CONTROL_PASSWORD_PEPPER` – (optional) extra secret for password hashing.
+- `MISSION_CONTROL_USERS_COLLECTION` – MongoDB collection for users (default: `users`).
 - `MISSION_CONTROL_MUTATION_SECRET` to require `x-mission-secret` on mutating APIs.
 - `MISSION_CONTROL_INGEST_TOKEN` to authorize `/api/telemetry/ingest`.
+
+### Bootstrapping the first user
+
+When auth is enabled, create the first user with:
+
+```bash
+MISSION_CONTROL_SESSION_SECRET=your-32-char-secret npm run seed:auth admin yourPassword
+```
+
+Or with a `.env.local`:
+
+```bash
+npm run seed:auth admin yourPassword
+```
+
+### Adding users (admin API)
+
+`POST /api/auth/users` with `{ username, password }` – requires an existing logged-in session.
 
 ## Vercel deployment checklist
 
@@ -139,7 +159,7 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:7070](http://localhost:7070) with your browser to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

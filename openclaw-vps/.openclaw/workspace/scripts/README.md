@@ -42,6 +42,11 @@ npm run mission:standup
 npm run mission:smoke
 ```
 
+```bash
+# Run Sherlock pipeline smoke validation in dry-run mode (no Wolf DB writes).
+npm run sherlock:smoke
+```
+
 ## Notes
 
 - Set `MISSION_CONTROL_MONGO_URI` in `/root/.openclaw/workspace/.env`.
@@ -49,3 +54,4 @@ npm run mission:smoke
   - `MISSION_CONTROL_DB` (default: `mission-control`)
   - `MISSION_CONTROL_TASKS_COLLECTION` (default: `tasks`)
   - `MISSION_CONTROL_NOTIFICATIONS_COLLECTION` (default: `notifications`)
+- Sherlock smoke can override cycle path with `SHERLOCK_CYCLE_SCRIPT` if not running on VPS defaults.

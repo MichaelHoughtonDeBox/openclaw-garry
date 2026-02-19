@@ -1,7 +1,10 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import type { ReactNode } from "react"
-import { ActivitySquare, BellRing, Cpu, RefreshCcw, Workflow } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { ActivitySquare, BellRing, Cpu, LogOut, RefreshCcw, Workflow } from "lucide-react"
+import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -49,6 +52,26 @@ export function TopCommandBar({
   onRefresh,
   actions,
 }: TopCommandBarProps) {
+  const router = useRouter()
+  const [authUser, setAuthUser] = useState<{ username: string } | null>(null)
+
+  useEffect(() => {
+    void fetch("/api/auth/me", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data: { user?: { id: string; username: string }; error?: string }) => {
+        if (data.user) {
+          setAuthUser({ username: data.user.username })
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" })
+    router.push("/login")
+    router.refresh()
+  }
+
   return (
     <header className="rounded-2xl border border-border/60 bg-card/90 p-3 shadow-[0_1px_0_0_rgba(255,255,255,0.06)] backdrop-blur">
       <div className="flex flex-wrap items-center gap-3 xl:flex-nowrap">
@@ -76,6 +99,16 @@ export function TopCommandBar({
         </div>
 
         <div className="flex min-w-0 items-center gap-2 xl:ml-auto">
+          {authUser ? (
+            <div className="flex shrink-0 items-center gap-1.5">
+              <span className="text-[11px] text-muted-foreground">{authUser.username}</span>
+              <Button variant="ghost" size="sm" className="h-8" onClick={handleLogout}>
+                <LogOut className="size-3.5" />
+                Logout
+              </Button>
+            </div>
+          ) : null}
+          <ThemeToggle />
           <Input
             value={operator}
             onChange={(event) => onOperatorChange(event.target.value)}

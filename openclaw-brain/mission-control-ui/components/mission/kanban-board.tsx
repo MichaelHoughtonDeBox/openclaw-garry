@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { TaskPriorityBadge, TaskStatusBadge, TriggerStateBadge } from "@/components/mission/status-badge"
+import { TaskPriorityBadge, TriggerStateBadge } from "@/components/mission/status-badge"
 import { TRANSITIONS } from "@/lib/mission/constants"
 import { assigneeInitials, formatRelativeTime, getAssigneeProfile } from "@/lib/mission/presentation"
 import type { Assignee, Task, TaskStatus } from "@/lib/mission/types"
@@ -43,12 +43,31 @@ function compactDescription(value: string) {
 
 function priorityCardAccent(priority: Task["priority"]) {
   if (priority === "urgent") {
-    return "border-l-destructive"
+    return "border-l-4 border-l-destructive"
   }
   if (priority === "normal") {
-    return "border-l-amber-500/70"
+    return "border-l-4 border-l-amber-500/80"
   }
-  return "border-l-emerald-500/70"
+  return "border-l-4 border-l-emerald-500/70"
+}
+
+/** Status-specific accent for column headers — mission-control industrial tone */
+function statusColumnAccent(status: TaskStatus) {
+  const base = "border-b-2"
+  switch (status) {
+    case "todo":
+      return `${base} border-b-slate-400/50 dark:border-b-slate-500/40`
+    case "in_progress":
+      return `${base} border-b-sky-500/60 dark:border-b-sky-400/50`
+    case "review":
+      return `${base} border-b-amber-500/60 dark:border-b-amber-400/50`
+    case "blocked":
+      return `${base} border-b-rose-500/60 dark:border-b-rose-400/50`
+    case "done":
+      return `${base} border-b-emerald-500/50 dark:border-b-emerald-400/40`
+    default:
+      return base
+  }
 }
 
 export function KanbanBoard({
@@ -170,7 +189,7 @@ export function KanbanBoard({
           return (
             <Card
               key={status}
-              className={`border-border/70 bg-card/85 ${isDropTarget ? "ring-2 ring-primary/30" : ""}`}
+              className={`overflow-hidden border-border/70 bg-card/85 ${isDropTarget ? "ring-2 ring-primary/50 ring-offset-2 dark:ring-offset-background" : ""}`}
               onDragOver={(event) => {
                 if (!onDropStatusChange) {
                   return
@@ -181,19 +200,23 @@ export function KanbanBoard({
               onDragLeave={() => setDropStatus((current) => (current === status ? null : current))}
               onDrop={(event) => void handleDrop(event, status)}
             >
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-xs uppercase tracking-wide">{status.replace("_", " ")}</CardTitle>
-                  <span className="text-xs text-muted-foreground">{tasks.length}</span>
+              <CardHeader className={`pb-3 pt-3 ${statusColumnAccent(status)}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-[11px] font-semibold uppercase tracking-[0.12em] text-foreground/90">
+                    {status.replace("_", " ")}
+                  </CardTitle>
+                  <span className="rounded-md bg-muted/60 px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+                    {tasks.length}
+                  </span>
                 </div>
                 {blockedByDependency ? (
-                  <p className="flex items-center gap-1 text-[10px] text-amber-600">
+                  <p className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-500">
                     <Unplug className="size-3" />
                     {waitingCount} waiting on dependencies
                   </p>
                 ) : null}
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="space-y-2.5">
                 {tasks.length === 0 ? (
                   <p className="text-xs text-muted-foreground">No tasks</p>
                 ) : (
@@ -207,7 +230,6 @@ export function KanbanBoard({
                           return
                         }
                         setDraggingTaskId(task.id)
-                        // The payload includes source status so we can enforce legal transitions on drop.
                         event.dataTransfer.setData(
                           "application/openclaw-task",
                           JSON.stringify({ taskId: task.id, fromStatus: task.status }),
@@ -219,75 +241,72 @@ export function KanbanBoard({
                         setDropStatus(null)
                       }}
                       onClick={() => onSelectTask(task)}
-                      className={`w-full rounded-xl border border-l-2 p-2 text-left transition ${
+                      className={`group relative w-full rounded-lg border p-3 text-left transition-all duration-200 ease-out ${
                         priorityCardAccent(task.priority)
                       } ${
                         selectedTaskId === task.id
-                          ? "border-primary/50 bg-primary/10 shadow-[0_0_0_1px_rgba(0,0,0,0.02)]"
-                          : "border-border/70 bg-background/70 hover:border-primary/30 hover:bg-background"
-                      }`}
+                          ? "border-primary/60 bg-primary/10 shadow-[0_2px_10px_-2px_rgba(0,0,0,0.12)] dark:shadow-[0_2px_14px_-4px_rgba(0,0,0,0.5)] ring-1 ring-primary/20"
+                          : "border-border/60 bg-background/80 hover:border-border hover:bg-background hover:shadow-[0_4px_12px_-2px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_4px_16px_-4px_rgba(0,0,0,0.3)] active:scale-[0.99]"
+                      } ${draggingTaskId === task.id ? "opacity-60" : ""}`}
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <TaskPriorityBadge priority={task.priority} compact />
-                        <p className="text-[10px] text-muted-foreground">{formatRelativeTime(task.updated_at)}</p>
+                      {/* Header: task name as primary focus */}
+                      <div className="space-y-1.5">
+                        <p className="line-clamp-2 text-[13px] font-semibold leading-snug tracking-tight text-foreground">
+                          {task.task_name}
+                        </p>
+                        <div className="flex items-center justify-between gap-2">
+                          <TaskPriorityBadge priority={task.priority} compact />
+                          <span className="text-[10px] text-muted-foreground">{formatRelativeTime(task.updated_at)}</span>
+                        </div>
                       </div>
-                      <p className="mt-1 line-clamp-2 text-xs font-semibold leading-4">{task.task_name}</p>
-                      <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+
+                      {/* Description preview */}
+                      <p className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
                         {compactDescription(task.description)}
                       </p>
 
-                      <div className="mt-2 flex items-center gap-2">
-                        <div className="grid size-5 shrink-0 place-items-center rounded-full border border-border/70 bg-muted/30 text-[10px] font-semibold">
-                          {assigneeInitials(task.assignee)}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-[11px] font-medium">
+                      {/* Compact meta row: assignee + artifacts */}
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div className="grid size-6 shrink-0 place-items-center rounded-full border border-border/60 bg-muted/50 text-[10px] font-semibold text-foreground/80">
+                            {assigneeInitials(task.assignee)}
+                          </div>
+                          <p className="truncate text-[11px] font-medium text-foreground/90">
                             {getAssigneeProfile(task.assignee).displayName}
                           </p>
-                          <p className="truncate text-[10px] text-muted-foreground">
-                            {getAssigneeProfile(task.assignee).role}
-                          </p>
+                        </div>
+                        <div className="flex shrink-0 gap-2 text-[10px] text-muted-foreground">
+                          <span className="flex items-center gap-0.5">
+                            <MessageSquareMore className="size-3" />
+                            {task.message_count}
+                          </span>
+                          <span className="flex items-center gap-0.5">
+                            <FileText className="size-3" />
+                            {task.linked_document_ids.length}
+                          </span>
+                          <span className="flex items-center gap-0.5">
+                            <GitBranch className="size-3" />
+                            {task.dependencies.length}
+                          </span>
                         </div>
                       </div>
 
-                      {task.labels.length > 0 ? (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {task.labels.slice(0, 2).map((label) => (
-                            <Badge key={`${task.id}-${label}`} variant="outline" className="rounded-md text-[10px]">
-                              {label}
-                            </Badge>
-                          ))}
-                          {task.labels.length > 2 ? (
-                            <Badge variant="outline" className="rounded-md text-[10px]">
-                              +{task.labels.length - 2}
-                            </Badge>
-                          ) : null}
-                        </div>
-                      ) : null}
-
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        <TaskStatusBadge status={task.status} compact />
+                      {/* Labels + trigger state — bottom row */}
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {task.labels.slice(0, 2).map((label) => (
+                          <Badge key={`${task.id}-${label}`} variant="outline" className="rounded-md text-[10px]">
+                            {label}
+                          </Badge>
+                        ))}
+                        {task.labels.length > 2 ? (
+                          <Badge variant="outline" className="rounded-md text-[10px]">+{task.labels.length - 2}</Badge>
+                        ) : null}
                         <TriggerStateBadge triggerState={task.trigger_state} compact />
                       </div>
 
-                      <div className="mt-2 grid grid-cols-3 gap-1 text-[10px] text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <MessageSquareMore className="size-3.5" />
-                          {task.message_count}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <FileText className="size-3.5" />
-                          {task.linked_document_ids.length}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <GitBranch className="size-3.5" />
-                          {task.dependencies.length}
-                        </span>
-                      </div>
                       {task.trigger_state === "WAITING" ? (
-                        <p className="mt-1 text-[10px] text-amber-600">
-                          Waiting on {task.dependencies.length} dependency
-                          {task.dependencies.length === 1 ? "" : "ies"}
+                        <p className="mt-1.5 text-[10px] text-amber-600 dark:text-amber-500">
+                          Waiting on {task.dependencies.length} dependency{task.dependencies.length === 1 ? "" : "ies"}
                         </p>
                       ) : null}
                     </button>

@@ -19,6 +19,7 @@ import {
   createTaskMessage,
   createDocument,
   createTask,
+  deleteTask,
   fetchDocument,
   fetchTaskMessages,
   fetchDocuments,
@@ -431,6 +432,31 @@ export function MissionControlDashboard() {
     })
   }
 
+  async function handleDeleteTask(taskId: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      await deleteTask({ taskId, operator })
+      setSnapshot((current) => {
+        if (!current) return current
+        const tasks = current.tasks.tasks.filter((t) => t.id !== taskId)
+        const grouped = groupTasks(tasks)
+        return {
+          ...current,
+          tasks: { tasks, grouped },
+          reviewQueue: tasks.filter((t) => t.status === "review"),
+        }
+      })
+      setSelectedTaskId(null)
+      await reload()
+    } catch (caughtError) {
+      const message = caughtError instanceof Error ? caughtError.message : "Failed to delete task."
+      setError(message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   function handleFocusAssignee(assignee?: Assignee) {
     setFocusedAssignee(assignee)
     setBoardFilter((current) => {
@@ -509,7 +535,7 @@ export function MissionControlDashboard() {
         {error ? <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p> : null}
         {loading ? <p className="rounded-lg border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground">Loading dashboard...</p> : null}
 
-        <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)_380px]">
+        <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)_420px]">
           <AgentsRail
             health={snapshot?.health ?? []}
             focusedAssignee={focusedAssignee}
@@ -591,6 +617,7 @@ export function MissionControlDashboard() {
         onLinkDocuments={handleLinkDocuments}
         onOpenDocument={handleOpenDocumentById}
         onCreateDocument={handleCreateDocument}
+        onDeleteTask={handleDeleteTask}
       />
       <DocumentDetailSheet
         key={selectedDocument?.id ?? "no-document-selected"}

@@ -18,6 +18,9 @@ const rawEnvSchema = z.object({
   MISSION_CONTROL_AUTH_ENABLED: z.string().optional(),
   MISSION_CONTROL_AUTH_USER: z.string().optional(),
   MISSION_CONTROL_AUTH_PASSWORD: z.string().optional(),
+  MISSION_CONTROL_SESSION_SECRET: z.string().optional(),
+  MISSION_CONTROL_PASSWORD_PEPPER: z.string().optional(),
+  MISSION_CONTROL_USERS_COLLECTION: z.string().optional(),
   MISSION_CONTROL_MUTATION_SECRET: z.string().optional(),
   MISSION_CONTROL_INGEST_TOKEN: z.string().optional(),
   MISSION_CONTROL_POLL_INTERVAL_MS: z.string().optional(),
@@ -34,6 +37,9 @@ export type MissionEnv = {
   authEnabled: boolean
   authUser: string
   authPassword: string
+  sessionSecret: string
+  passwordPepper: string
+  usersCollection: string
   mutationSecret: string
   ingestToken: string
   pollIntervalMs: number
@@ -60,6 +66,9 @@ export function getMissionEnv(): MissionEnv {
     authEnabled: parseBoolean(parsed.MISSION_CONTROL_AUTH_ENABLED, false),
     authUser: parsed.MISSION_CONTROL_AUTH_USER ?? "admin",
     authPassword: parsed.MISSION_CONTROL_AUTH_PASSWORD ?? "",
+    sessionSecret: parsed.MISSION_CONTROL_SESSION_SECRET ?? "",
+    passwordPepper: parsed.MISSION_CONTROL_PASSWORD_PEPPER ?? "",
+    usersCollection: parsed.MISSION_CONTROL_USERS_COLLECTION ?? "users",
     mutationSecret: parsed.MISSION_CONTROL_MUTATION_SECRET ?? "",
     ingestToken: parsed.MISSION_CONTROL_INGEST_TOKEN ?? "",
     pollIntervalMs: Number.isFinite(pollIntervalRaw) && pollIntervalRaw >= 2000 ? pollIntervalRaw : 7000,

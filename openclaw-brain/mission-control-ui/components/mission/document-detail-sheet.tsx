@@ -86,7 +86,7 @@ export function DocumentDetailSheet({
   }
 
   return (
-    <aside className="fixed inset-y-0 right-0 z-30 w-full border-l bg-background p-4 shadow-xl sm:w-[520px]">
+    <aside className="fixed inset-y-0 right-0 z-30 w-full border-l border-border bg-background p-4 shadow-xl sm:w-[640px]">
       <Card className="h-full">
         <CardHeader className="space-y-2">
           <div className="flex items-center justify-between gap-3">

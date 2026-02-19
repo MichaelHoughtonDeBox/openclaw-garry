@@ -48,6 +48,15 @@
       "active": true
     },
     {
+      "assignee": "sherlock",
+      "displayName": "Sherlock",
+      "role": "Incident Intelligence Specialist",
+      "level": "specialist",
+      "openclawAgentId": "sherlock",
+      "sessionKey": "agent:sherlock:main",
+      "active": true
+    },
+    {
       "assignee": "vision",
       "displayName": "Vision",
       "role": "SEO Analyst",
