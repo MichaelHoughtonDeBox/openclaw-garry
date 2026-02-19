@@ -1,8 +1,20 @@
 "use client"
 
+import Link from "next/link"
 import { useMemo, useState } from "react"
-import { FileText, Link2, ListTodo, ScrollText } from "lucide-react"
+import { ExternalLink, FileText, Link2, ListTodo, ScrollText, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DocumentComposerDialog } from "@/components/mission/document-composer-dialog"
 import { DocumentMultiSelect } from "@/components/mission/document-multi-select"
@@ -12,7 +24,15 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { TaskPriorityBadge, TaskStatusBadge, TriggerStateBadge } from "@/components/mission/status-badge"
+import { TRANSITIONS } from "@/lib/mission/constants"
 import type { DocumentSource, MissionDocument, Task, TaskMessage, TaskStatus } from "@/lib/mission/types"
 
 type TaskDetailSheetProps = {
@@ -46,6 +66,7 @@ type TaskDetailSheetProps = {
     metadata?: Record<string, unknown>
     operator: string
   }) => Promise<void>
+  onDeleteTask: (taskId: string) => Promise<void>
 }
 
 export function TaskDetailSheet({
@@ -64,6 +85,7 @@ export function TaskDetailSheet({
   onLinkDocuments,
   onOpenDocument,
   onCreateDocument,
+  onDeleteTask,
 }: TaskDetailSheetProps) {
   const [statusNote, setStatusNote] = useState("")
   const [logMessage, setLogMessage] = useState("")
@@ -79,6 +101,11 @@ export function TaskDetailSheet({
   const linkedDocumentsById = useMemo(() => {
     return new Map(linkedDocuments.map((document) => [document.id, document]))
   }, [linkedDocuments])
+
+  const validTransitions = useMemo(
+    () => (task ? TRANSITIONS[task.status] ?? [] : []),
+    [task],
+  )
 
   if (!task) {
     return null
@@ -128,20 +155,83 @@ export function TaskDetailSheet({
   }
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 w-full border-r bg-background p-4 shadow-xl sm:w-[480px]">
+    <aside className="fixed inset-y-0 left-0 z-30 w-full border-r border-border bg-background p-4 shadow-xl sm:w-[640px]">
       <Card className="h-full">
         <CardHeader className="space-y-2">
           <div className="flex items-center justify-between gap-3">
             <CardTitle className="text-sm">{task.task_name}</CardTitle>
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              Close
-            </Button>
+            <div className="flex items-center gap-1">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={busy}>
+                    <Trash2 className="size-3.5" />
+                    Delete
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="sm:max-w-md">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete task</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will permanently delete &quot;{task.task_name}&quot; and all its messages. Linked documents will be unlinked. This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      variant="destructive"
+                      onClick={async () => {
+                        await onDeleteTask(activeTask.id)
+                      }}
+                    >
+                      Delete task
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              <Button variant="ghost" size="sm" onClick={onClose}>
+                Close
+              </Button>
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <TaskStatusBadge status={task.status} />
             <TaskPriorityBadge priority={task.priority} />
             <TriggerStateBadge triggerState={task.trigger_state} />
           </div>
+          {/* Inline status change: allows operator to move task to any valid next status */}
+          {validTransitions.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-medium text-muted-foreground">Change status:</span>
+              <Select
+                key={activeTask.id}
+                value=""
+                onValueChange={async (toStatus) => {
+                  if (validTransitions.includes(toStatus as TaskStatus)) {
+                    await onTransition({
+                      taskId: activeTask.id,
+                      toStatus: toStatus as TaskStatus,
+                      note: statusNote.trim() || undefined,
+                    })
+                    setStatusNote("")
+                  }
+                }}
+                disabled={busy}
+              >
+                <SelectTrigger className="h-7 w-[160px]">
+                  <SelectValue placeholder="Move to…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {validTransitions.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {status.replace("_", " ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : task.status === "done" ? (
+            <p className="text-[11px] text-muted-foreground">Task completed. No status changes available.</p>
+          ) : null}
         </CardHeader>
         <CardContent className="space-y-4 overflow-y-auto pb-6">
           <div className="text-xs text-muted-foreground">
@@ -246,10 +336,22 @@ export function TaskDetailSheet({
                               : "Document details are outside current list filters."}
                           </p>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => onOpenDocument(documentId)}>
-                          <FileText className="size-3.5" />
-                          Open
-                        </Button>
+                        <div className="flex shrink-0 gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onOpenDocument(documentId)}
+                          >
+                            <FileText className="size-3.5" />
+                            Open
+                          </Button>
+                          <Button variant="outline" size="sm" asChild>
+                            <Link href={`/documents/${documentId}`}>
+                              <ExternalLink className="size-3.5" />
+                              Full page
+                            </Link>
+                          </Button>
+                        </div>
                       </CardContent>
                     </Card>
                   )

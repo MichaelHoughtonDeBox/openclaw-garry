@@ -365,6 +365,17 @@ export async function releaseDependencies(operator: string) {
   return parseJson<{ releasedCount: number; releasedTaskIds: string[] }>(response)
 }
 
+/**
+ * Permanently deletes a task and its messages. Documents are unlinked from the task.
+ */
+export async function deleteTask(input: { taskId: string; operator: string }) {
+  const response = await fetch(`/api/tasks/${input.taskId}`, {
+    method: "DELETE",
+    headers: buildHeaders(input.operator),
+  })
+  return parseJson<{ deletedTaskId: string }>(response)
+}
+
 export async function createDocument(input: {
   title: string
   contentMd: string

@@ -809,6 +809,61 @@ export async function releaseDependencies(input: {
   }
 }
 
+/**
+ * Permanently deletes a task and its associated messages.
+ * Documents linked to the task are updated to remove the task reference.
+ *
+ * @param input - taskId and operator for audit
+ * @returns The deleted task's id
+ * @throws Error if task not found
+ */
+export async function deleteTask(input: {
+  taskId: string
+  operator: string
+}): Promise<{ deletedTaskId: string }> {
+  const { tasks, messages, documents } = await getMissionCollections()
+  const taskObjectId = parseObjectId(input.taskId)
+
+  const existingTask = await tasks.findOne({ _id: taskObjectId })
+  if (!existingTask) {
+    throw new Error("Task not found")
+  }
+
+  const timestamp = nowIso()
+
+  // Clear taskId on documents that reference this task as their primary task
+  await documents.updateMany(
+    { taskId: taskObjectId },
+    { $unset: { taskId: "" }, $set: { updated_at: timestamp } },
+  )
+  // Remove this task from documents' linked_task_ids
+  await documents.updateMany(
+    { linked_task_ids: taskObjectId },
+    { $pull: { linked_task_ids: taskObjectId }, $set: { updated_at: timestamp } },
+  )
+
+  // Delete task messages
+  await messages.deleteMany({ taskId: taskObjectId })
+
+  // Delete the task
+  const deleteResult = await tasks.deleteOne({ _id: taskObjectId })
+  if (deleteResult.deletedCount === 0) {
+    throw new Error("Task not found")
+  }
+
+  await insertActivity({
+    source: "operator",
+    status: "ok",
+    eventType: "task_deleted",
+    message: `Deleted task "${existingTask.task_name}"`,
+    assignee: existingTask.assignee,
+    taskId: input.taskId,
+    metadata: { operator: input.operator },
+  })
+
+  return { deletedTaskId: input.taskId }
+}
+
 export async function createDocument(input: {
   title: string
   contentMd: string

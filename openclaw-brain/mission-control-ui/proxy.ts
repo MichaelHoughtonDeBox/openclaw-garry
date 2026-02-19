@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import { getSessionCookieName, verifySessionCookie } from "@/lib/auth/session"
+import { getMissionEnv } from "@/lib/env"
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (!value) {
@@ -8,60 +10,49 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   return value === "1" || value.toLowerCase() === "true"
 }
 
-function decodeBasicAuth(value: string): { user: string; pass: string } | null {
-  const [, encoded] = value.split(" ")
-  if (!encoded) {
-    return null
-  }
-
-  try {
-    const decoded =
-      typeof atob === "function" ? atob(encoded) : Buffer.from(encoded, "base64").toString("utf8")
-    const [user, ...rest] = decoded.split(":")
-    return {
-      user: user ?? "",
-      pass: rest.join(":"),
-    }
-  } catch {
-    return null
-  }
-}
-
-function unauthorizedResponse() {
-  return new NextResponse("Authentication required", {
-    status: 401,
-    headers: {
-      "WWW-Authenticate": 'Basic realm="Mission Control"',
-    },
-  })
-}
-
-export function proxy(request: NextRequest) {
+/**
+ * Auth proxy: when MISSION_CONTROL_AUTH_ENABLED=true, protects all routes
+ * except /login and /api/auth/login. Uses signed session cookie for verification.
+ * Telemetry ingest bypasses auth when x-ingest-token matches.
+ */
+export async function proxy(request: NextRequest) {
   const authEnabled = parseBoolean(process.env.MISSION_CONTROL_AUTH_ENABLED, false)
   if (!authEnabled) {
     return NextResponse.next()
   }
 
   const { pathname } = request.nextUrl
+
+  // Allow login page and login API without auth
+  if (pathname === "/login" || pathname === "/api/auth/login") {
+    return NextResponse.next()
+  }
+
+  // Allow telemetry ingest when token matches
+  const env = getMissionEnv()
   if (pathname === "/api/telemetry/ingest") {
-    const ingestToken = process.env.MISSION_CONTROL_INGEST_TOKEN
+    const ingestToken = env.ingestToken
     const providedToken = request.headers.get("x-ingest-token")
     if (ingestToken && providedToken === ingestToken) {
       return NextResponse.next()
     }
   }
 
-  const authHeader = request.headers.get("authorization")
-  if (!authHeader?.startsWith("Basic ")) {
-    return unauthorizedResponse()
+  // Verify session for all other routes
+  const cookieValue = request.cookies.get(getSessionCookieName())?.value
+  if (!cookieValue) {
+    const loginUrl = new URL("/login", request.url)
+    loginUrl.searchParams.set("redirect", pathname)
+    return NextResponse.redirect(loginUrl)
   }
 
-  const credentials = decodeBasicAuth(authHeader)
-  const expectedUser = process.env.MISSION_CONTROL_AUTH_USER ?? "admin"
-  const expectedPass = process.env.MISSION_CONTROL_AUTH_PASSWORD ?? ""
-
-  if (!credentials || credentials.user !== expectedUser || credentials.pass !== expectedPass) {
-    return unauthorizedResponse()
+  const session = await verifySessionCookie(cookieValue)
+  if (!session) {
+    const loginUrl = new URL("/login", request.url)
+    loginUrl.searchParams.set("redirect", pathname)
+    const response = NextResponse.redirect(loginUrl)
+    response.cookies.set(getSessionCookieName(), "", { maxAge: 0, path: "/" })
+    return response
   }
 
   return NextResponse.next()
