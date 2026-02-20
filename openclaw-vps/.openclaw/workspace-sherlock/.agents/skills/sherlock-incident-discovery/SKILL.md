@@ -1,7 +1,7 @@
 ---
 name: sherlock-incident-discovery
 version: 1.0.0
-description: Collect incident candidates from X API and Perplexity web search, normalize evidence, and submit to the Wolf additive ingest endpoint.
+description: Legacy connector-based Sherlock incident pipeline. Use for controlled diagnostics/backfill only; primary heartbeat flow is now tool-driven.
 ---
 
 # Sherlock Incident Discovery
@@ -15,6 +15,9 @@ Use this skill to run one autonomous Sherlock cycle that:
 5. Persists connector cursor/checkpoint state for idempotent follow-up runs.
 6. Can run multi-pass search when initial evidence is insufficient.
 7. Backfills missing coordinates by geocoding location text before final rejection.
+
+This skill is retained for backwards compatibility and controlled diagnostics.
+Primary heartbeat/cron flow should use tool-driven discovery plus `finalize-agentic-cycle.mjs`.
 
 ## Runtime Layout
 
@@ -65,7 +68,7 @@ node /root/.openclaw/workspace-sherlock/.agents/skills/sherlock-incident-discove
 ## Required Environment Variables
 
 - `SHERLOCK_X_BEARER_TOKEN`
-- `PERPLEXITY_API_KEY`
+- `PERPLEXITY_API_KEY` (or `SHERLOCK_PERPLEXITY_API_KEY` / `OPENROUTER_API_KEY`)
 - `SHERLOCK_WOLF_INGEST_URL`
 - `SHERLOCK_WOLF_INGEST_TOKEN`
 - `HERE_API_KEY` (recommended for high quality geocoding fallback)
@@ -82,6 +85,7 @@ node /root/.openclaw/workspace-sherlock/.agents/skills/sherlock-incident-discove
 
 ## Safety Rules
 
+- Prefer `web_search` / `web_fetch` / `browser` discovery in standard runtime.
 - Do not submit incidents without numeric latitude/longitude.
 - Do not submit incidents without source URL and source identifier.
 - Keep raw source snippets in metadata for auditability.

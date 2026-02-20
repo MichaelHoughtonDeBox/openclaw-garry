@@ -244,7 +244,14 @@ function priorityRank(priority) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const action = args._[0];
-  assert(action, "Missing action. Example: node mission-control-cli.mjs task_poll_ready_for_assignee --assignee corey");
+  const statusHint =
+    " (READY/WAITING/RETRY are trigger_state — use task_set_trigger --trigger-state for those)";
+  const statusMsg = (allowed) => `status must be one of: ${Array.from(allowed).join(", ")}${statusHint}`;
+
+  assert(
+    action,
+    "Missing action. Run: node mission-control-cli.mjs help. Example: node mission-control-cli.mjs task_poll_ready_for_assignee --assignee corey"
+  );
 
   const workspaceRoot = path.resolve(__dirname, "..");
   await bootstrapEnv(workspaceRoot);
@@ -275,12 +282,21 @@ async function main() {
       action,
       available_actions: [
         "task_create",
+        "task_get",
+        "task_list",
         "task_poll_ready_for_assignee",
         "task_claim",
         "task_append_log",
+        "task_update",
+        "task_reassign",
+        "task_submit",
         "task_transition_status",
+        "task_set_trigger",
         "task_mark_blocked",
         "task_complete_with_output",
+        "task_submit",
+        "task_reassign",
+        "task_get",
         "task_release_dependencies",
         "task_review_queue",
         "task_bootstrap_indexes",
@@ -328,8 +344,14 @@ async function main() {
         args["trigger-state"] || payload.trigger_state || (dependenciesRaw.length > 0 ? "WAITING" : "READY")
       ).trim();
 
-      assert(taskName.length >= 3, "task_name must be at least 3 characters");
-      assert(description.length >= 5, "description must be at least 5 characters");
+      assert(
+        taskName.length >= 3,
+        "task_name must be at least 3 characters. Provide --task-name with a descriptive title (e.g. 'Investigate signup drop-off')"
+      );
+      assert(
+        description.length >= 5,
+        "description must be at least 5 characters. Provide --description with execution brief for the assignee"
+      );
       assert(knownAssignees.has(assignee), `assignee must be one of: ${Array.from(knownAssignees).join(", ")}`);
       assert(allowedPriorities.has(priority), `priority must be one of: ${Array.from(allowedPriorities).join(", ")}`);
       assert(allowedTriggers.has(triggerState), `trigger_state must be one of: ${Array.from(allowedTriggers).join(", ")}`);
@@ -482,7 +504,7 @@ async function main() {
       const toStatus = String(args["to-status"] || "").trim();
       const agent = String(args.agent || "garry");
       const note = String(args.note || `Status transition requested: ${toStatus}`);
-      assert(allowedStatuses.has(toStatus), `to-status must be one of: ${Array.from(allowedStatuses).join(", ")}`);
+      assert(allowedStatuses.has(toStatus), statusMsg(allowedStatuses));
 
       const current = await tasks.findOne({ _id: taskId });
       assert(current, `Task not found: ${taskId.toString()}`);
@@ -518,7 +540,7 @@ async function main() {
 
       assert(assignee.length > 0, "assignee is required");
       assert(summary.length > 0, "summary is required");
-      assert(allowedStatuses.has(finalStatus), `final-status must be one of: ${Array.from(allowedStatuses).join(", ")}`);
+      assert(allowedStatuses.has(finalStatus), statusMsg(allowedStatuses));
 
       const current = await tasks.findOne({ _id: taskId });
       assert(current, `Task not found: ${taskId.toString()}`);
@@ -1018,6 +1040,159 @@ async function main() {
     if (action === "task_review_queue") {
       const docs = await tasks.find({ status: "review" }).toArray();
       emit({ ok: true, action, tasks: docs.map(normalizeTask) });
+      return;
+    }
+
+    if (action === "task_get") {
+      const taskId = parseObjectId(String(args["task-id"] || ""), "task-id");
+      const found = await tasks.findOne({ _id: taskId });
+      assert(found, `Task not found: ${taskId.toString()}`);
+      emit({ ok: true, action, task: normalizeTask(found) });
+      return;
+    }
+
+    if (action === "task_reassign") {
+      const taskId = parseObjectId(String(args["task-id"] || ""), "task-id");
+      const assignee = String(args.assignee || "").trim();
+      const agent = String(args.agent || "garry");
+      assert(assignee.length > 0, "assignee is required");
+      assert(knownAssignees.has(assignee), `assignee must be one of: ${Array.from(knownAssignees).join(", ")}`);
+      const current = await tasks.findOne({ _id: taskId });
+      assert(current, `Task not found: ${taskId.toString()}`);
+      const result = await tasks.findOneAndUpdate(
+        { _id: taskId },
+        {
+          $set: { assignee, updated_at: nowIso() },
+          $push: { agent_logs: createLog(agent, `Reassigned to ${assignee}`) }
+        },
+        { returnDocument: "after" }
+      );
+      assert(result, `Task reassign failed for ${taskId.toString()}`);
+      success(`Reassigned task ${taskId.toString()} to ${assignee}`);
+      emit({ ok: true, action, task: normalizeTask(result) });
+      return;
+    }
+
+    if (action === "task_submit") {
+      // Alias for task_complete_with_output — same params: --task-id, --assignee, --summary, --link, --agent
+      const taskId = parseObjectId(String(args["task-id"] || ""), "task-id");
+      const assignee = String(args.assignee || "").trim();
+      const summary = String(args.summary || "").trim();
+      const link = String(args.link || "").trim();
+      const agent = String(args.agent || assignee);
+      const finalStatus = String(args["final-status"] || "review");
+      assert(assignee.length > 0, "assignee is required");
+      assert(summary.length > 0, "summary is required");
+      assert(allowedStatuses.has(finalStatus), statusMsg(allowedStatuses));
+      const current = await tasks.findOne({ _id: taskId });
+      assert(current, `Task not found: ${taskId.toString()}`);
+      assert(canTransition(transitions, current.status, finalStatus), `Cannot transition ${current.status} -> ${finalStatus}`);
+      const result = await tasks.findOneAndUpdate(
+        { _id: taskId, assignee },
+        {
+          $set: {
+            status: finalStatus,
+            output_data: { link, summary },
+            updated_at: nowIso()
+          },
+          $push: { agent_logs: createLog(agent, `Task output submitted. Status -> ${finalStatus}`) }
+        },
+        { returnDocument: "after" }
+      );
+      assert(result, `Task assignee mismatch for ${taskId.toString()}`);
+      success(`Submitted task ${taskId.toString()} to ${finalStatus}`);
+      emit({ ok: true, action, task: normalizeTask(result) });
+      return;
+    }
+
+    if (action === "task_list") {
+      const assignee = args.assignee ? String(args.assignee).trim() : null;
+      const status = args.status ? String(args.status).trim() : null;
+      const limit = Math.min(Math.max(Number(args.limit) || 20, 1), 100);
+      const query = {};
+      if (assignee) {
+        assert(knownAssignees.has(assignee), `assignee must be one of: ${Array.from(knownAssignees).join(", ")}`);
+        query.assignee = assignee;
+      }
+      if (status) {
+        assert(allowedStatuses.has(status), statusMsg(allowedStatuses));
+        query.status = status;
+      }
+      const docs = await tasks.find(query).sort({ updated_at: -1 }).limit(limit).toArray();
+      emit({ ok: true, action, tasks: docs.map(normalizeTask), count: docs.length });
+      return;
+    }
+
+    if (action === "task_update") {
+      const taskId = parseObjectId(String(args["task-id"] || ""), "task-id");
+      const agent = String(args.agent || "garry");
+      const current = await tasks.findOne({ _id: taskId });
+      assert(current, `Task not found: ${taskId.toString()}`);
+
+      const updates = {};
+      if (args.status !== undefined) {
+        const toStatus = String(args.status).trim();
+        assert(allowedStatuses.has(toStatus), statusMsg(allowedStatuses));
+        assert(canTransition(transitions, current.status, toStatus), `Cannot transition ${current.status} -> ${toStatus}`);
+        updates.status = toStatus;
+      }
+      if (args.description !== undefined) updates.description = String(args.description).trim();
+      if (args["task-name"] !== undefined) {
+        const name = String(args["task-name"]).trim();
+        assert(
+          name.length >= 3,
+          "task_name must be at least 3 characters. Provide --task-name with a descriptive title"
+        );
+        updates.task_name = name;
+      }
+      if (args.priority !== undefined) {
+        const priority = String(args.priority).trim();
+        assert(allowedPriorities.has(priority), `priority must be one of: ${Array.from(allowedPriorities).join(", ")}`);
+        updates.priority = priority;
+      }
+      if (args.assignee !== undefined) {
+        const assignee = String(args.assignee).trim();
+        assert(knownAssignees.has(assignee), `assignee must be one of: ${Array.from(knownAssignees).join(", ")}`);
+        updates.assignee = assignee;
+      }
+      if (Object.keys(updates).length === 0) {
+        fail("At least one of --status, --description, --task-name, --priority, --assignee is required");
+        process.exitCode = 1;
+        return;
+      }
+      updates.updated_at = nowIso();
+
+      const result = await tasks.findOneAndUpdate(
+        { _id: taskId },
+        {
+          $set: updates,
+          $push: { agent_logs: createLog(agent, `Task updated: ${Object.keys(updates).filter((k) => k !== "updated_at").join(", ")}`) }
+        },
+        { returnDocument: "after" }
+      );
+      assert(result, `Task update failed for ${taskId.toString()}`);
+      success(`Updated task ${taskId.toString()}`);
+      emit({ ok: true, action, task: normalizeTask(result) });
+      return;
+    }
+
+    if (action === "task_set_trigger") {
+      const taskId = parseObjectId(String(args["task-id"] || ""), "task-id");
+      const triggerState = String(args["trigger-state"] || args.trigger_state || "").trim();
+      const agent = String(args.agent || "garry");
+      assert(allowedTriggers.has(triggerState), `trigger-state must be one of: ${Array.from(allowedTriggers).join(", ")}`);
+
+      const result = await tasks.findOneAndUpdate(
+        { _id: taskId },
+        {
+          $set: { trigger_state: triggerState, updated_at: nowIso() },
+          $push: { agent_logs: createLog(agent, `trigger_state -> ${triggerState}`) }
+        },
+        { returnDocument: "after" }
+      );
+      assert(result, `Task not found: ${taskId.toString()}`);
+      success(`Set task ${taskId.toString()} trigger_state to ${triggerState}`);
+      emit({ ok: true, action, task: normalizeTask(result) });
       return;
     }
 

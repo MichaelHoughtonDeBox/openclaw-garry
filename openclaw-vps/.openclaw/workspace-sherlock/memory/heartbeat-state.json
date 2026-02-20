@@ -11,5 +11,15 @@
     "perplexity_web": {
       "lastRunAt": null
     }
+  },
+  "autonomy": {
+    "focusRotationIndex": 0,
+    "randomSeed": null,
+    "lastSuccessfulQueryFamilies": [],
+    "recentIncidentFingerprints": [],
+    "lastRunMode": null,
+    "lastQueryFamily": null,
+    "lastTaskId": null,
+    "lastRunAt": null
   }
 }

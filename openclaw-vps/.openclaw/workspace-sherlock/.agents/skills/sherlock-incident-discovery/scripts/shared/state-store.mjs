@@ -15,6 +15,16 @@ const DEFAULT_STATE = {
     perplexity_web: {
       lastRunAt: null
     }
+  },
+  autonomy: {
+    focusRotationIndex: 0,
+    randomSeed: null,
+    lastSuccessfulQueryFamilies: [],
+    recentIncidentFingerprints: [],
+    lastRunMode: null,
+    lastQueryFamily: null,
+    lastTaskId: null,
+    lastRunAt: null
   }
 };
 
@@ -46,6 +56,10 @@ function withStateDefaults(rawState) {
         ...DEFAULT_STATE.connectors.perplexity_web,
         ...(rawState?.connectors?.perplexity_web || {})
       }
+    },
+    autonomy: {
+      ...DEFAULT_STATE.autonomy,
+      ...(rawState?.autonomy || {})
     }
   };
 }

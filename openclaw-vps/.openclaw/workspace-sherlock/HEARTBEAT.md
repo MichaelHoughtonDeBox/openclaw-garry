@@ -1,74 +1,103 @@
-# HEARTBEAT.md - Sherlock (Agentic Incident Discovery Worker)
+# HEARTBEAT.md - Sherlock (Tool-Driven Autonomy Worker)
 
-## Hybrid Loop (Task-First + Autonomous)
+## On Every Heartbeat
 
-You are not a static scraper. Use judgment each heartbeat.
+Run Sherlock in a task-first, tool-driven flow. Do **not** use connector scripts for discovery.
 
-1. Poll for assigned Sherlock tasks first:
+### 1) Poll and claim Mission Control work
 
 ```bash
-# Check if Garry (or any operator) assigned a directed task to Sherlock.
+# Poll one READY task for Sherlock.
 node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_poll_ready_for_assignee --assignee sherlock --limit 1 --json
 ```
 
-2. If a task exists, claim it before doing any work:
+- If a task is available, claim it before execution.
+- If no task is available, run autonomous discovery using the default focus list in `SHERLOCK_FOCUS_LOCATIONS`.
+
+### 2) Build run intent
+
+- Directed mode:
+  - Use task brief as the primary objective.
+  - Parse lead URLs/focus hints via:
 
 ```bash
-# Atomic claim to avoid duplicate execution by overlapping cron runs.
-node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_claim --task-id "<TASK_OBJECT_ID>" --assignee sherlock --agent sherlock --json
+# Parse directed task briefing into deterministic hints.
+node /root/.openclaw/workspace-sherlock/.agents/skills/sherlock-task-intake/scripts/task-intake.mjs --task-id "<TASK_ID>" --task-name "<TASK_NAME>" --task-description "<TASK_DESCRIPTION>" --focus-locations "${SHERLOCK_FOCUS_LOCATIONS:-}" --default-min-incidents 3 --default-max-passes 2 --json
 ```
 
-3. For claimed tasks, execute directed investigation:
+- Autonomous mode:
+  - Choose a focus city from `SHERLOCK_FOCUS_LOCATIONS`.
+  - Pick a query family aligned to recent safety signals (e.g. `crime_watch`, `traffic_risk`, `protest_disruption`).
 
-- If task contains a URL, investigate that URL/source first, then widen if needed.
-- If task contains incident text, use it as a hypothesis seed for `--x-query` / `--perplexity-queries`.
-- Prefer adding source-backed incidents discovered from that lead.
-- Append logs as you work, then complete the task with meaningful output.
+### 3) Discover incidents with tools (agentic step)
+
+Use available tools directly:
+
+- `web_search` for discovery and lead expansion.
+- `web_fetch` to retrieve full source pages.
+- `browser` only for dynamic pages that cannot be fetched statically.
+- `sherlock-geocode-resolution` to resolve missing coordinates or place labels.
+
+Do not run:
+
+- `sherlock-incident-discovery/scripts/run-sherlock-cycle.mjs`
+- `sherlock-source-collection/scripts/source-collection.mjs`
+- direct X/Perplexity connector scripts
+
+Create a candidate payload at `/tmp/sherlock-candidates-<timestamp>.json` with this schema:
+
+```json
+{
+  "meta": {
+    "queryFamily": "task_hypothesis"
+  },
+  "candidates": [
+    {
+      "sourcePlatform": "web",
+      "sourceId": "stable-source-id",
+      "sourceUrl": "https://example.com/source",
+      "author": "Publisher or account name",
+      "postedAt": "2026-02-16T10:30:00.000Z",
+      "summary": "Clear incident summary with enough context for moderation.",
+      "rawText": "Source excerpt or extracted evidence text.",
+      "latitude": -26.2041,
+      "longitude": 28.0473,
+      "locationLabel": "Johannesburg, South Africa",
+      "connector": "agentic-tools",
+      "keywords": ["robbery", "armed"],
+      "severity": 3
+    }
+  ]
+}
+```
+
+If candidates are missing lat/lon or location labels, run geocode resolution before finalisation:
+
+- **Forward geocode:** address text -> lat/lon.
+- **Reverse geocode:** lat/lon -> canonical location label.
+
+### 4) Deterministic enrichment + Wolf submission
 
 ```bash
-# Log progress for traceability.
-node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_append_log --task-id "<TASK_OBJECT_ID>" --agent sherlock --message "Investigating provided lead URL/text and running focused collection." --json
+# Finalize tool-collected candidates via deterministic enrichment and ingest submission.
+node /root/.openclaw/workspace-sherlock/.agents/skills/sherlock-autonomy-orchestrator/scripts/finalize-agentic-cycle.mjs --json --mode "<autonomous|directed>" --task-id "<TASK_ID_OR_EMPTY>" --query-family "<QUERY_FAMILY>" --input-file "/tmp/sherlock-candidates-<timestamp>.json"
 ```
 
-```bash
-# Complete task after successful directed ingest run.
-node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_complete_with_output --task-id "<TASK_OBJECT_ID>" --assignee sherlock --agent sherlock --summary "Processed directed lead and submitted resulting incidents." --link "mongo://documents/<DOCUMENT_ID>" --json
-```
+- This command performs dedupe, geocode fallback, normalisation, Wolf submission, and heartbeat state updates.
+- Use `--dry-run` when validating flow only.
 
-```bash
-# If blocked, do not drop the task silently.
-node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_mark_blocked --task-id "<TASK_OBJECT_ID>" --assignee sherlock --agent sherlock --reason "<BLOCKER_REASON>" --json
-```
+### 5) Close task lifecycle when claimed
 
-4. If no task exists, run focused autonomous search:
+- Append progress logs during execution.
+- Create Mongo document with evidence summary and finalisation JSON.
+- Complete with output link when successful.
+- If blocked, call `task_mark_blocked` with explicit blocker.
 
-```bash
-# Multi-pass cycle: if evidence is weak, the orchestrator automatically broadens search for another pass.
-# Default focus: major South African + UK cities unless SHERLOCK_FOCUS_LOCATIONS is set.
-node /root/.openclaw/workspace-sherlock/.agents/skills/sherlock-incident-discovery/scripts/run-sherlock-cycle.mjs --json --min-incidents 3 --max-passes 2 --focus-locations "${SHERLOCK_FOCUS_LOCATIONS:-Johannesburg, South Africa||Cape Town, South Africa||Durban, South Africa||Pretoria, South Africa||Port Elizabeth, South Africa||Bloemfontein, South Africa||London, United Kingdom||Manchester, United Kingdom||Birmingham, United Kingdom||Leeds, United Kingdom||Glasgow, United Kingdom||Liverpool, United Kingdom||Bristol, United Kingdom||Edinburgh, United Kingdom||Sheffield, United Kingdom||Newcastle upon Tyne, United Kingdom}"
-```
-
-5. Review returned summary and reason:
-   - If quality/quantity is sufficient, stop.
-   - If thin/low-confidence, run another targeted pass with your own hypothesis query.
-
-```bash
-# Optional model-directed follow-up pass with your own hypothesis.
-node /root/.openclaw/workspace-sherlock/.agents/skills/sherlock-incident-discovery/scripts/run-sherlock-cycle.mjs --json --max-passes 1 --x-query "(hijacking OR armed robbery OR suspicious activity OR stabbing) has:geo -is:retweet lang:en" --perplexity-queries "Find additional high-confidence incidents with explicit location clues and credible sources."
-```
-
-6. If still no credible incidents after a reasonable attempt, reply `HEARTBEAT_OK`.
-7. If submission fails, report blocker details with likely root cause and remediation hint.
-
-## Reasoning Expectations
-
-- Use available context to decide whether to go deeper or stop.
-- Prefer high-signal incidents with verifiable source URLs and coordinates.
-- If one source is weak, pivot query strategy instead of repeating identical runs.
+If no task exists and no credible candidates are found, reply `HEARTBEAT_OK`.
 
 ## Guardrails
 
-- Never fabricate facts, locations, or source links.
-- Treat source evidence as immutable. Preserve source id/url/posted-at values exactly.
-- Submit only incidents with valid numeric coordinates.
-- Keep connector state in `memory/heartbeat-state.json` for idempotent polling.
+- Never fabricate sources, URLs, coordinates, or timestamps.
+- Preserve source IDs and links exactly as collected.
+- Keep writes additive through Wolf internal ingest only.
+- Keep resumable state in `memory/heartbeat-state.json`.

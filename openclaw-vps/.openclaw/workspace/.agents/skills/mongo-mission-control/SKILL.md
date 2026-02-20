@@ -18,6 +18,8 @@ Use this skill whenever work should flow through Mission Control instead of ad-h
 cd /root/.openclaw/workspace/scripts && npm install
 ```
 
+**Path:** The CLI lives only in `/root/.openclaw/workspace/scripts/`. Agent workspaces have a `scripts` symlink; use the full path or `scripts/` from main workspace.
+
 ## Action Commands
 
 ```bash
@@ -128,6 +130,28 @@ node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_transition_s
 node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_release_dependencies \
   --agent garry
 ```
+
+```bash
+# List tasks (optional filters: --assignee, --status, --limit).
+node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_list --assignee corey --status todo --limit 20 --json
+```
+
+```bash
+# Update task fields (patch: --status, --description, --task-name, --priority, --assignee).
+node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_update --task-id "<TASK_OBJECT_ID>" --status todo --agent garry
+```
+
+```bash
+# Set trigger_state (READY, WAITING, RETRY) — e.g. clear block after operator intervention.
+node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_set_trigger --task-id "<TASK_OBJECT_ID>" --trigger-state READY --agent garry
+```
+
+## Common Pitfalls
+
+- **status vs trigger_state**: `--status` accepts only `todo`, `in_progress`, `blocked`, `review`, `done`. For `READY`, `WAITING`, or `RETRY`, use `task_set_trigger --trigger-state <VALUE>` — those are trigger states, not statuses.
+- **task_name**: Must be at least 3 characters. Use a descriptive title (e.g. `"Investigate signup drop-off"`), never empty or placeholders.
+- **Missing action**: Always pass an action as the first argument. Run `node mission-control-cli.mjs help` to list actions.
+- **Replace placeholders**: `<TASK_OBJECT_ID>` and `<DOCUMENT_ID>` are placeholders — substitute real ObjectIds from task_list/document_list output.
 
 ## Operating Rules
 

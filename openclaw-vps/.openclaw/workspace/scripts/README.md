@@ -47,11 +47,17 @@ npm run mission:smoke
 npm run sherlock:smoke
 ```
 
+```bash
+# List all CLI actions and parameters.
+node ./mission-control-cli.mjs help
+```
+
 ## Notes
 
+- **Path:** The CLI lives in `/root/.openclaw/workspace/scripts/`. Agent workspaces (`workspace-corey`, `workspace-tony`, etc.) have a `scripts` symlink pointing here, so `node scripts/mission-control-cli.mjs` from any workspace resolves correctly.
 - Set `MISSION_CONTROL_MONGO_URI` in `/root/.openclaw/workspace/.env`.
 - Optional overrides:
   - `MISSION_CONTROL_DB` (default: `mission-control`)
   - `MISSION_CONTROL_TASKS_COLLECTION` (default: `tasks`)
   - `MISSION_CONTROL_NOTIFICATIONS_COLLECTION` (default: `notifications`)
-- Sherlock smoke can override cycle path with `SHERLOCK_CYCLE_SCRIPT` if not running on VPS defaults.
+- Sherlock smoke can override the finalizer script path with `SHERLOCK_AGENTIC_FINALIZER_SCRIPT` if not running on VPS defaults.
