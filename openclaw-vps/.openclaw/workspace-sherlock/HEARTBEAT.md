@@ -4,6 +4,15 @@
 
 Run Sherlock in a task-first, tool-driven flow. Do **not** use connector scripts for discovery.
 
+### 1a) Check for stale in_progress tasks
+
+```bash
+# Poll for tasks Sherlock claimed but left unfinished (fire-and-forget amnesia fix).
+node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_poll_stale_in_progress_for_assignee --assignee sherlock --stale-minutes 60 --limit 1 --json
+```
+
+If any tasks are returned, resume that task. Do not poll READY or run autonomous discovery until it is completed or blocked. Append a log "Resuming stalled task", then continue from step 2 (build run intent) with the stalled task as context.
+
 ### 1) Poll and claim Mission Control work
 
 ```bash

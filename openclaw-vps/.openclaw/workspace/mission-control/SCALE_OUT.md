@@ -13,7 +13,7 @@ This workflow keeps runtime changes to config/data, not code rewrites.
    - `sessionKey`
    - `openclawAgentId`
    - `active: true`
-3. Copy the heartbeat protocol into the new workspace `HEARTBEAT.md`.
+3. Copy the heartbeat protocol into the new workspace `HEARTBEAT.md`. It must include the stale-in-progress check (`task_poll_stale_in_progress_for_assignee`) before polling READY — copy from an existing worker's HEARTBEAT.md.
 4. Add a staggered cron job in `cron/jobs.json` targeting that `agentId`.
 
 ## Staggering Pattern

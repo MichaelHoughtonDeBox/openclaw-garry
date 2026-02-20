@@ -285,6 +285,7 @@ async function main() {
         "task_get",
         "task_list",
         "task_poll_ready_for_assignee",
+        "task_poll_stale_in_progress_for_assignee",
         "task_claim",
         "task_append_log",
         "task_update",
@@ -409,6 +410,32 @@ async function main() {
 
       const selected = docs.slice(0, limit).map(normalizeTask);
       info(`Found ${selected.length} READY task(s) for ${assignee}`);
+      emit({ ok: true, action, tasks: selected });
+      return;
+    }
+
+    // Returns in_progress tasks assigned to assignee with updated_at older than stale-minutes.
+    // Used by heartbeats to "nag" agents about abandoned work (fire-and-forget amnesia fix).
+    if (action === "task_poll_stale_in_progress_for_assignee") {
+      const assignee = String(args.assignee || "").trim();
+      assert(knownAssignees.has(assignee), `assignee must be one of: ${Array.from(knownAssignees).join(", ")}`);
+      const limit = Math.min(Math.max(Number(args.limit) || 1, 1), 100);
+      const staleMinutes = Math.min(Math.max(Number(args["stale-minutes"]) || 60, 1), 1440);
+
+      const cutoffDate = new Date(Date.now() - staleMinutes * 60 * 1000);
+
+      const docs = await tasks
+        .find({
+          assignee,
+          status: "in_progress",
+          updated_at: { $lt: cutoffDate.toISOString() }
+        })
+        .sort({ updated_at: 1 })
+        .limit(limit)
+        .toArray();
+
+      const selected = docs.map(normalizeTask);
+      info(`Found ${selected.length} stale in_progress task(s) for ${assignee}`);
       emit({ ok: true, action, tasks: selected });
       return;
     }

@@ -16,6 +16,15 @@ If notifications are actionable, complete the requested work and then acknowledg
 node /root/.openclaw/workspace/scripts/mission-control-cli.mjs notification_mark_delivered --notification-id "<NOTIFICATION_ID>" --assignee garry --agent garry --json
 ```
 
+1.5. Check for stale in_progress tasks assigned to Garry (no update in >1 hour):
+
+```bash
+# Poll for tasks Garry claimed but left unfinished (fire-and-forget amnesia fix).
+node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_poll_stale_in_progress_for_assignee --assignee garry --stale-minutes 60 --limit 1 --json
+```
+
+If any tasks are returned, resume that work before other orchestration steps. Do not proceed to dependency release or review until the stalled task is completed or blocked.
+
 2. Run dependency release so WAITING tasks move to READY when unblocked:
 
 ```bash

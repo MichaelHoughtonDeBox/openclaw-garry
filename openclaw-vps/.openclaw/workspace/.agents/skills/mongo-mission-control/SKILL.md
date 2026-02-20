@@ -39,6 +39,15 @@ node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_poll_ready_f
 ```
 
 ```bash
+# Poll in_progress tasks for one assignee that haven't been updated recently (stale = fire-and-forget fix).
+# Use during heartbeat before polling READY — resume stalled work before accepting new tasks.
+node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_poll_stale_in_progress_for_assignee \
+  --assignee corey \
+  --stale-minutes 60 \
+  --limit 1
+```
+
+```bash
 # Claim one task atomically (idempotent).
 node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_claim \
   --task-id "<TASK_OBJECT_ID>" \
@@ -155,6 +164,7 @@ node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_set_trigger 
 
 ## Operating Rules
 
+- During heartbeat, check for stale in_progress tasks before polling READY. Stale = assigned to you, no update in >1 hour. Resume stalled work before accepting new tasks.
 - Always claim before doing work.
 - Never mutate task status directly in Mongo shell; use commands above so transition rules stay consistent.
 - If no work is available, continue normal heartbeat behavior and return `HEARTBEAT_OK`.

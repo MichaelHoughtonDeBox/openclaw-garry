@@ -308,7 +308,32 @@ async function main() {
       .toArray();
     assert(notificationActivities.length >= 2, "Notification delivery outcomes should be emitted to activities");
 
-    success("Smoke test passed: task, document, notification, and observability flows are working.");
+    // Stale in_progress poll: returns empty when no tasks match (corey/tony tasks are done/blocked, not stale in_progress).
+    const coreyStalePoll = await runCli(scriptDir, mongoUri, [
+      "task_poll_stale_in_progress_for_assignee",
+      "--assignee",
+      "corey",
+      "--stale-minutes",
+      "60",
+      "--limit",
+      "1"
+    ]);
+    assert(Array.isArray(coreyStalePoll.tasks), "Stale poll should return tasks array");
+    assert(coreyStalePoll.tasks.length === 0, "Corey should see no stale in_progress tasks (his task is done)");
+
+    const tonyStalePoll = await runCli(scriptDir, mongoUri, [
+      "task_poll_stale_in_progress_for_assignee",
+      "--assignee",
+      "tony",
+      "--stale-minutes",
+      "60",
+      "--limit",
+      "1"
+    ]);
+    assert(Array.isArray(tonyStalePoll.tasks), "Stale poll should return tasks array");
+    assert(tonyStalePoll.tasks.length === 0, "Tony should see no stale in_progress tasks (his task is blocked, not in_progress)");
+
+    success("Smoke test passed: task, document, notification, stale-poll, and observability flows are working.");
   } finally {
     await mongoClient.close();
     await memoryMongo.stop();

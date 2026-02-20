@@ -21,6 +21,15 @@ node /root/.openclaw/workspace/scripts/mission-control-cli.mjs notification_mark
 node /root/.openclaw/workspace/scripts/mission-control-cli.mjs notification_mark_failed --notification-id "<NOTIFICATION_ID>" --assignee tony --agent tony --error "<REASON>" --json
 ```
 
+2.5. Check for stale in_progress tasks (assigned to me, no update in >1 hour):
+
+```bash
+# Poll for tasks I claimed but left unfinished (fire-and-forget amnesia fix).
+node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_poll_stale_in_progress_for_assignee --assignee tony --stale-minutes 60 --limit 1 --json
+```
+
+If any tasks are returned, treat them as stalled. Resume that work immediately: append a log "Resuming stalled task", then validate handoff (step 6), execute (step 7), and finish (step 8). Do not poll for new READY tasks until the stalled task is completed or blocked.
+
 3. Poll one READY task:
 
 ```bash
@@ -28,7 +37,7 @@ node /root/.openclaw/workspace/scripts/mission-control-cli.mjs notification_mark
 node /root/.openclaw/workspace/scripts/mission-control-cli.mjs task_poll_ready_for_assignee --assignee tony --limit 1 --json
 ```
 
-4. If no tasks returned, reply `HEARTBEAT_OK`.
+4. If no stale tasks and no READY tasks returned, reply `HEARTBEAT_OK`.
 5. If a task exists, claim it before doing any work:
 
 ```bash
