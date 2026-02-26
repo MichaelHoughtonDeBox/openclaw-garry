@@ -6,8 +6,12 @@ export type FeedScope = (typeof FEED_SCOPES)[number]
 const COMMENT_EVENT_MATCHERS = [/message/i, /comment/i, /mention/i]
 const DECISION_EVENT_MATCHERS = [/decision/i, /approved/i, /request_changes/i, /task_status_changed/i]
 
-export function getAssigneeProfile(assignee: Assignee) {
-  return ASSIGNEE_PROFILES[assignee]
+export function getAssigneeProfile(assignee: Assignee | string) {
+  return ASSIGNEE_PROFILES[assignee as Assignee] ?? {
+    displayName: assignee ? assignee.charAt(0).toUpperCase() + assignee.slice(1) : "Unknown",
+    role: "Agent",
+    activeByDefault: false
+  }
 }
 
 export function formatRelativeTime(isoTimestamp: string, nowMs = Date.now()) {
@@ -50,7 +54,7 @@ export function activityMatchesScope(activity: Activity, scope: FeedScope) {
   )
 }
 
-export function assigneeInitials(assignee: Assignee) {
+export function assigneeInitials(assignee: Assignee | string) {
   const profile = getAssigneeProfile(assignee)
   const parts = profile.displayName.split(/\s+/).filter(Boolean)
   if (parts.length === 0) {
