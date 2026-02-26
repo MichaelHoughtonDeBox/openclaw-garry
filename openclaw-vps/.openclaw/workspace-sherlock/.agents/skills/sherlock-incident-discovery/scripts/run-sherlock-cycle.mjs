@@ -2,60 +2,47 @@
 
 import process from "node:process";
 import { createLogger } from "./shared/logger.mjs";
-import { parseCommonFlags } from "./shared/cli.mjs";
+import { parseCommonFlags, getFlagValue } from "./shared/cli.mjs";
 import { loadState, resolveDefaultStateFile, saveState } from "./shared/state-store.mjs";
-import { XApiConnector } from "./connectors/x-api/index.mjs";
-import { PerplexityWebConnector } from "./connectors/perplexity-web/index.mjs";
-import { normalizeIncidentCandidate } from "./normalize-incident.mjs";
-import { submitIncidentsToWolfIngest } from "./submit-to-wolf-ingest.mjs";
 import { parseFocusLocations } from "./shared/focus.mjs";
-import { resolveCoordinatesFromText } from "./shared/geocode.mjs";
+import { collectSourceCandidates } from "../../sherlock-source-collection/scripts/source-collection.mjs";
+import { enrichIncidentCandidates } from "../../sherlock-incident-enrichment/scripts/incident-enrichment.mjs";
+import { loadWorkspaceEnv } from "./shared/env.mjs";
+import { submitIncidentBatch } from "../../sherlock-wolf-submission/scripts/wolf-submission.mjs";
 
-function normalizeSummaryKey(summary) {
-  return String(summary || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 120);
+function withAutonomyDefaults(rawAutonomy) {
+  return {
+    focusRotationIndex: 0,
+    randomSeed: null,
+    lastSuccessfulQueryFamilies: [],
+    recentIncidentFingerprints: [],
+    lastRunMode: null,
+    lastQueryFamily: null,
+    lastTaskId: null,
+    lastRunAt: null,
+    ...(rawAutonomy || {})
+  };
 }
 
-function dedupeCandidates(candidates) {
-  const seenSource = new Set();
-  const seenSemantic = new Set();
-  const kept = [];
-  const removed = [];
-
-  for (const candidate of candidates) {
-    const sourceKey = `${candidate.sourcePlatform}:${candidate.sourceId}`;
-    if (seenSource.has(sourceKey)) {
-      removed.push({ reason: "duplicate_source", sourceKey });
+function keepLastUnique(values, maxItems) {
+  const output = [];
+  for (const value of values) {
+    const normalized = String(value || "").trim();
+    if (!normalized) {
       continue;
     }
-
-    const hasCoordinates = Number.isFinite(Number(candidate.latitude)) && Number.isFinite(Number(candidate.longitude));
-    const coordinateKey = hasCoordinates
-      ? `${Number(candidate.latitude).toFixed(3)}:${Number(candidate.longitude).toFixed(3)}`
-      : "no-coordinates";
-    const semanticKey = `${coordinateKey}:${normalizeSummaryKey(candidate.summary || candidate.rawText)}`;
-
-    if (seenSemantic.has(semanticKey)) {
-      removed.push({ reason: "duplicate_semantic", semanticKey });
+    if (output.includes(normalized)) {
       continue;
     }
-
-    seenSource.add(sourceKey);
-    seenSemantic.add(semanticKey);
-    kept.push(candidate);
+    output.push(normalized);
   }
-
-  return { kept, removed };
+  return output.slice(Math.max(0, output.length - maxItems));
 }
 
 function summarizeConnectorResult(result) {
   return {
     connector: result.connector,
-    candidates: result.candidates.length,
+    candidates: Array.isArray(result.candidates) ? result.candidates.length : 0,
     focusLocations: result.meta?.focusLocations || [],
     query: result.meta?.query || null,
     queries: result.meta?.queries || null,
@@ -63,35 +50,24 @@ function summarizeConnectorResult(result) {
   };
 }
 
-function parsePerplexityQueries(rawValue) {
-  const raw = String(rawValue || "").trim();
-  if (!raw) {
-    return [];
-  }
-  return raw
-    .split("||")
-    .map((value) => value.trim())
-    .filter(Boolean);
-}
-
-function hasValidCoordinates(candidate) {
-  const latitude = Number(candidate.latitude);
-  const longitude = Number(candidate.longitude);
-  return Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180;
-}
-
 async function main() {
+  await loadWorkspaceEnv(import.meta.url);
   const logger = createLogger("run-sherlock-cycle");
+  const argv = process.argv.slice(2);
   const flags = parseCommonFlags(process.argv.slice(2));
+  const mode = getFlagValue(argv, "--mode", "autonomous") === "directed" ? "directed" : "autonomous";
+  const taskId = getFlagValue(argv, "--task-id", "");
   const stateFile = flags.stateFile || resolveDefaultStateFile(import.meta.url);
   const state = await loadState(stateFile);
+  const autonomyState = withAutonomyDefaults(state.autonomy);
   const focusLocations = parseFocusLocations(flags.focusLocationsRaw || process.env.SHERLOCK_FOCUS_LOCATIONS || "");
   const minIncidents = Math.max(1, Number(flags.minIncidents || 1));
   const maxPasses = Math.max(1, Math.min(Number(flags.maxPasses || 1), 4));
-  const userPerplexityQueries = parsePerplexityQueries(flags.perplexityQueriesRaw);
   const startedAt = new Date().toISOString();
 
   logger.info("Starting Sherlock cycle", {
+    mode,
+    taskId: taskId || null,
     dryRun: flags.dryRun,
     stateFile,
     focusLocations,
@@ -102,92 +78,55 @@ async function main() {
   const connectorErrors = [];
   const connectorResults = [];
   const allRawCandidates = [];
-  const normalizationRejected = [];
-  const normalizedIncidents = [];
-  let geocodeSuccessCount = 0;
-  let geocodeMissCount = 0;
+  let normalizationRejected = [];
+  let normalizedIncidents = [];
+  let enrichmentResult = null;
   const passSummaries = [];
+  const usedQueryFamilies = [];
 
   for (let pass = 1; pass <= maxPasses; pass += 1) {
-    const passXQuery = flags.xQuery
-      ? flags.xQuery
-      : pass === 1
-        ? ""
-        : '(crime OR robbery OR assault OR "suspicious activity" OR gun OR hijacking OR stabbing OR "breaking news") has:geo -is:retweet lang:en';
-    const passPerplexityQueries = userPerplexityQueries.length
-      ? userPerplexityQueries
-      : pass === 1
-        ? []
-        : [
-            "Find additional recent incidents with strong location clues, police/community alerts, and x.com references.",
-            "Search for under-reported suspicious activity posts in local community groups and regional news."
-          ];
-
-    const connectors = [
-      new XApiConnector({
-        maxResults: flags.limit,
-        focusLocations,
-        query: passXQuery || undefined
-      }),
-      new PerplexityWebConnector({
-        focusLocations,
-        queries: passPerplexityQueries.length ? passPerplexityQueries.join("||") : undefined
-      })
-    ];
-
-    const connectorSettled = await Promise.allSettled(
-      connectors.map((connector) => connector.collect({ state, limit: flags.limit }))
-    );
-
-    const passConnectorResults = [];
-    for (const settled of connectorSettled) {
-      if (settled.status === "fulfilled") {
-        passConnectorResults.push(settled.value);
-        connectorResults.push(settled.value);
-        continue;
+    const collection = await collectSourceCandidates({
+      state,
+      mode,
+      pass,
+      focusLocations,
+      limit: flags.limit,
+      overrides: {
+        xQuery: flags.xQuery,
+        perplexityQueries: flags.perplexityQueriesRaw
+      },
+      strategy: {
+        focusRotationIndex: autonomyState.focusRotationIndex
       }
-      connectorErrors.push(settled.reason instanceof Error ? settled.reason.message : String(settled.reason));
-    }
+    });
+    autonomyState.focusRotationIndex = collection.plan.nextFocusRotationIndex;
 
-    const passRawCandidates = passConnectorResults.flatMap((result) => result.candidates);
-    allRawCandidates.push(...passRawCandidates);
-    const passDedupe = dedupeCandidates(allRawCandidates);
+    const passConnectorResults = Array.isArray(collection.results) ? collection.results : [];
+    connectorResults.push(...passConnectorResults);
+    connectorErrors.push(...(collection.errors || []));
+    allRawCandidates.push(...(collection.candidates || []));
+    usedQueryFamilies.push(collection.plan.queryFamily);
 
-    normalizedIncidents.length = 0;
-    normalizationRejected.length = 0;
-    for (const candidate of passDedupe.kept) {
-      let fallbackCoordinates = null;
-      if (!hasValidCoordinates(candidate)) {
-        const geocodeInput = candidate.locationLabel || candidate.rawText || candidate.summary;
-        const geocoded = await resolveCoordinatesFromText(geocodeInput);
-        if (geocoded) {
-          fallbackCoordinates = {
-            latitude: geocoded.latitude,
-            longitude: geocoded.longitude
-          };
-          candidate.locationLabel = candidate.locationLabel || geocoded.label || null;
-          geocodeSuccessCount += 1;
-        } else {
-          geocodeMissCount += 1;
-        }
+    enrichmentResult = await enrichIncidentCandidates({
+      candidates: allRawCandidates,
+      previousFingerprints: autonomyState.recentIncidentFingerprints,
+      quality: {
+        minSummaryLength: Number(process.env.SHERLOCK_MIN_SUMMARY_LENGTH || 24),
+        requireSourceIdentity: true
       }
-
-      const normalized = normalizeIncidentCandidate(candidate, { fallbackCoordinates });
-      if (!normalized.ok) {
-        normalizationRejected.push({
-          sourceId: candidate.sourceId,
-          reason: normalized.reason
-        });
-        continue;
-      }
-      normalizedIncidents.push(normalized.incident);
-    }
+    });
+    normalizedIncidents = enrichmentResult.normalizedIncidents;
+    normalizationRejected = enrichmentResult.rejected;
 
     passSummaries.push({
       pass,
+      mode,
+      queryFamily: collection.plan.queryFamily,
+      focusLocations: collection.plan.focusLocations,
       connectors: passConnectorResults.map(summarizeConnectorResult),
-      rawCandidates: passRawCandidates.length,
-      normalizedIncidents: normalizedIncidents.length
+      rawCandidates: (collection.candidates || []).length,
+      normalizedIncidents: normalizedIncidents.length,
+      droppedCrossCycle: enrichmentResult.dedupe.droppedCrossCycle
     });
 
     // Agentic behavior: continue searching if evidence is still insufficient.
@@ -196,25 +135,19 @@ async function main() {
     }
   }
 
-  const dedupeResult = dedupeCandidates(allRawCandidates);
-
-  let submission = null;
-  let submissionError = null;
-  if (normalizedIncidents.length) {
-    try {
-      submission = await submitIncidentsToWolfIngest({
-        incidents: normalizedIncidents,
-        dryRun: flags.dryRun
-      });
-    } catch (error) {
-      submissionError = error instanceof Error ? error.message : String(error);
-    }
-  }
+  const submissionResult = await submitIncidentBatch({
+    incidents: normalizedIncidents,
+    dryRun: flags.dryRun
+  });
+  const submission = submissionResult.submission;
+  const submissionError = submissionResult.submissionError;
 
   const finishedAt = new Date().toISOString();
   const summary = {
     startedAt,
     finishedAt,
+    mode,
+    taskId: taskId || null,
     dryRun: flags.dryRun,
     focusLocations,
     passSummaries,
@@ -222,18 +155,17 @@ async function main() {
     connectorErrors,
     candidateCounts: {
       raw: allRawCandidates.length,
-      deduped: dedupeResult.kept.length,
-      droppedByDedupe: dedupeResult.removed.length
+      deduped: enrichmentResult?.dedupe?.keptWithinRun || 0,
+      droppedByDedupe: enrichmentResult?.dedupe?.droppedWithinRun || 0,
+      droppedCrossCycle: enrichmentResult?.dedupe?.droppedCrossCycle || 0
     },
     normalization: {
       accepted: normalizedIncidents.length,
       rejected: normalizationRejected.length,
       rejectedDetails: normalizationRejected
     },
-    geocoding: {
-      successfulFallbacks: geocodeSuccessCount,
-      unresolvedCandidates: geocodeMissCount
-    },
+    geocoding: enrichmentResult?.geocoding || { successfulFallbacks: 0, unresolvedCandidates: 0 },
+    queryFamilies: keepLastUnique(usedQueryFamilies, 8),
     submission,
     submissionError
   };
@@ -252,6 +184,23 @@ async function main() {
     if (submission && Number(submission.accepted || 0) > 0) {
       state.lastChecks.wolf_ingest_submit = finishedAt;
     }
+    const queryFamilies = keepLastUnique(
+      [...(autonomyState.lastSuccessfulQueryFamilies || []), ...summary.queryFamilies],
+      10
+    );
+    const fingerprints = keepLastUnique(
+      [...(autonomyState.recentIncidentFingerprints || []), ...(enrichmentResult?.newFingerprints || [])],
+      300
+    );
+    state.autonomy = {
+      ...autonomyState,
+      lastSuccessfulQueryFamilies: queryFamilies,
+      recentIncidentFingerprints: fingerprints,
+      lastRunMode: mode,
+      lastQueryFamily: summary.queryFamilies.length ? summary.queryFamilies[summary.queryFamilies.length - 1] : null,
+      lastTaskId: taskId || autonomyState.lastTaskId || null,
+      lastRunAt: finishedAt
+    };
     await saveState(stateFile, state);
   }
 
@@ -265,9 +214,10 @@ async function main() {
     logger.error("Submission failed", { error: submissionError });
     process.exitCode = 1;
   }
+  // Connector errors (e.g. Perplexity returning HTML, X API down) are non-fatal:
+  // cycle completes with 0 candidates. Do not exit 1 — only submission failure is fatal.
   if (connectorErrors.length) {
-    logger.warn("One or more connectors failed", { connectorErrors });
-    process.exitCode = 1;
+    logger.warn("One or more connectors failed (cycle completed with 0 candidates)", { connectorErrors });
   }
 }
 

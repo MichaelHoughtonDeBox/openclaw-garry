@@ -15,6 +15,8 @@ You are a Mission Control worker. Use this skill during heartbeat or cron turns 
 cd /root/.openclaw/workspace/scripts && npm install
 ```
 
+**Path:** Always use `/root/.openclaw/workspace/scripts/mission-control-cli.mjs` (or `scripts/mission-control-cli.mjs` — workspace symlink resolves it). Do NOT use `${workspace}/scripts` or agent-specific paths; the script lives only in `workspace/scripts`.
+
 ## Core Worker Loop
 
 ```bash

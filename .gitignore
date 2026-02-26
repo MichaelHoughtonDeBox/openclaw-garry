@@ -2,7 +2,6 @@
 .DS_Store
 
 # Keep this repo focused on your OpenClaw runtime config + brain docs
-.cursor/
 openclaw/
 
 # OpenClaw VPS: do not commit live secrets/runtime state
@@ -18,6 +17,12 @@ openclaw-vps/.openclaw/telegram/update-offset-*.json
 openclaw-vps/.openclaw/logs/
 openclaw-vps/.openclaw/identity/
 openclaw-vps/.openclaw/cron/jobs.json.bak
+openclaw-vps/.openclaw/.env
+openclaw-vps/.openclaw/.env.local
+openclaw-vps/.openclaw/workspace/.env
+openclaw-vps/.openclaw/workspace/.env.local
+openclaw-vps/.openclaw/workspace-*/.env
+openclaw-vps/.openclaw/workspace-*/.env.local
 
 # Ignore accidental nested repos/symlink mirrors from skill installers
 openclaw-vps/.openclaw/workspace/.git/

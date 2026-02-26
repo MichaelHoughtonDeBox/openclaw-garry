@@ -64,8 +64,19 @@ function parsePerplexityIncidents(content) {
 export class PerplexityWebConnector extends ConnectorBase {
   constructor(options = {}) {
     super("perplexity_web");
-    this.apiKey = options.apiKey || process.env.PERPLEXITY_API_KEY || "";
-    this.model = options.model || process.env.SHERLOCK_PERPLEXITY_MODEL || "sonar-pro";
+    this.apiKey =
+      options.apiKey ||
+      process.env.SHERLOCK_PERPLEXITY_API_KEY ||
+      process.env.PERPLEXITY_API_KEY ||
+      process.env.OPENROUTER_API_KEY ||
+      "";
+    this.apiUrl = options.apiUrl || process.env.SHERLOCK_PERPLEXITY_API_URL || "https://api.perplexity.ai/chat/completions";
+    const rawModel = options.model || process.env.SHERLOCK_PERPLEXITY_MODEL || "sonar-pro";
+    // OpenRouter expects fully qualified provider/model strings.
+    this.model =
+      this.apiUrl.includes("openrouter.ai") && !String(rawModel).includes("/")
+        ? `perplexity/${rawModel}`
+        : rawModel;
     this.timeoutMs = Math.max(3000, Number(options.timeoutMs || process.env.SHERLOCK_PERPLEXITY_TIMEOUT_MS || 25000));
     const configuredQueries = (options.queries || process.env.SHERLOCK_PERPLEXITY_QUERIES || "")
       .split("||")
@@ -80,7 +91,6 @@ export class PerplexityWebConnector extends ConnectorBase {
       ? options.focusLocations.map((value) => String(value).trim()).filter(Boolean)
       : parseFocusLocations(options.focusLocationsRaw || process.env.SHERLOCK_FOCUS_LOCATIONS || "");
     this.queries = buildPerplexityFocusedQueries(this.baseQueries, this.focusLocations);
-    this.apiUrl = options.apiUrl || process.env.SHERLOCK_PERPLEXITY_API_URL || "https://api.perplexity.ai/chat/completions";
   }
 
   async collect() {
@@ -88,7 +98,9 @@ export class PerplexityWebConnector extends ConnectorBase {
     const nowIso = new Date().toISOString();
 
     if (!this.apiKey) {
-      warnings.push("PERPLEXITY_API_KEY is missing; skipping Perplexity connector.");
+      warnings.push(
+        "Perplexity connector API key missing; set SHERLOCK_PERPLEXITY_API_KEY, PERPLEXITY_API_KEY, or OPENROUTER_API_KEY."
+      );
       return {
         connector: this.connectorName,
         candidates: [],

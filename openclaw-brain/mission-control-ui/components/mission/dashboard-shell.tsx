@@ -12,6 +12,7 @@ import { TaskComposerDialog } from "@/components/mission/task-composer-dialog"
 import { TaskDetailSheet } from "@/components/mission/task-detail-sheet"
 import { TopCommandBar } from "@/components/mission/top-command-bar"
 import { useDashboard } from "@/lib/mission/dashboard-context"
+import { MissionRoomPixel } from "@/components/mission/pixel/mission-room-pixel"
 
 type DashboardShellProps = {
   children: ReactNode
@@ -74,7 +75,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
   } = useDashboard()
 
   return (
-    <main className="min-h-screen bg-background px-4 py-4 sm:px-6">
+    <main className="min-h-screen bg-background px-4 py-4 sm:px-6 relative pb-[240px]">
       <div className="mx-auto max-w-[1800px] space-y-3">
         <TopCommandBar
           operator={operator}
@@ -183,6 +184,14 @@ export function DashboardShell({ children }: DashboardShellProps) {
         busy={busy}
         onClose={() => setSelectedDocument(null)}
         onUpdateDocument={handleUpdateDocument}
+      />
+
+      {/* Global Transparent Pixel Footer */}
+      <MissionRoomPixel
+        health={snapshot?.health ?? []}
+        queueSize={queueSize}
+        focusedAssignee={focusedAssignee}
+        onFocusAssignee={handleFocusAssignee}
       />
     </main>
   )
