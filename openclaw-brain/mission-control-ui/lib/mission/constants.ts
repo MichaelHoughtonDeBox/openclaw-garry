@@ -18,6 +18,7 @@ export const ASSIGNEES = [
   "pepper",
   "friday",
   "wong",
+  "sherlock",
 ] as const
 
 export const ACTIVE_DEFAULT_ASSIGNEES = ["garry", "corey", "tony", "shuri", "friday", "wong"] as const
@@ -40,6 +41,7 @@ export const ASSIGNEE_PROFILES = {
   pepper: { displayName: "Pepper", role: "Email Marketing", activeByDefault: false },
   friday: { displayName: "Friday", role: "Developer", activeByDefault: false },
   wong: { displayName: "Wong", role: "Documentation", activeByDefault: false },
+  sherlock: { displayName: "Sherlock", role: "Discovery", activeByDefault: false },
 } as const satisfies Record<
   (typeof ASSIGNEES)[number],
   {
