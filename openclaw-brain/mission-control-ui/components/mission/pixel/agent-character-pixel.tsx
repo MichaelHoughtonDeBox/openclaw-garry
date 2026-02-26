@@ -24,7 +24,7 @@ export function AgentCharacterPixel({ agent, focused, onFocus, deskX, totalWidth
   const xRef = useRef(deskX)
   const targetXRef = useRef(deskX)
   const waitFramesRef = useRef(0)
-  const requestRef = useRef<number>()
+  const requestRef = useRef<number>(0)
 
   // React state for rendering the correct SVG frame and label
   const animStateRef = useRef({ action: isWorking ? 'working' : 'idle', facingRight: true })
