@@ -11,6 +11,8 @@ import {
 } from "../../sherlock-incident-discovery/scripts/shared/cli.mjs";
 import { parseFocusLocations } from "../../sherlock-incident-discovery/scripts/shared/focus.mjs";
 import { createLogger } from "../../sherlock-incident-discovery/scripts/shared/logger.mjs";
+import { loadWorkspaceEnv } from "../../sherlock-incident-discovery/scripts/shared/env.mjs";
+import { emitTelemetryEvents, getTelemetryConfig } from "../../sherlock-incident-discovery/scripts/shared/telemetry.mjs";
 import { parseTaskIntake } from "../../sherlock-task-intake/scripts/task-intake.mjs";
 
 /**
@@ -32,17 +34,69 @@ function extractLastJsonObject(output) {
   if (!cleaned) {
     return null;
   }
-  const objectStart = cleaned.lastIndexOf("\n{");
-  const jsonStart = objectStart >= 0 ? objectStart + 1 : cleaned.indexOf("{");
-  if (jsonStart < 0) {
+
+  const parsedObjects = [];
+
+  // Parse every balanced JSON object in the output so trailing log lines after
+  // the summary don't break extraction.
+  for (let start = 0; start < cleaned.length; start += 1) {
+    if (cleaned[start] !== "{") {
+      continue;
+    }
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let cursor = start; cursor < cleaned.length; cursor += 1) {
+      const ch = cleaned[cursor];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (ch === "\"") {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch === "\"") {
+        inString = true;
+        continue;
+      }
+      if (ch === "{") {
+        depth += 1;
+        continue;
+      }
+      if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          const candidate = cleaned.slice(start, cursor + 1);
+          try {
+            parsedObjects.push(JSON.parse(candidate));
+          } catch {
+            // Skip non-JSON object-like fragments in log lines.
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  if (!parsedObjects.length) {
     return null;
   }
-  const jsonText = cleaned.slice(jsonStart).trim();
-  try {
-    return JSON.parse(jsonText);
-  } catch {
-    return null;
+
+  for (let index = parsedObjects.length - 1; index >= 0; index -= 1) {
+    const candidate = parsedObjects[index];
+    if (candidate && typeof candidate === "object" && ("submission" in candidate || "passSummaries" in candidate)) {
+      return candidate;
+    }
   }
+
+  return parsedObjects[parsedObjects.length - 1] || null;
 }
 
 /**
@@ -185,13 +239,60 @@ async function runSherlockCycle(input) {
   return parsed;
 }
 
+function createRunId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function asTaskIdOrUndefined(rawTaskId) {
+  const taskId = String(rawTaskId || "").trim();
+  return /^[a-fA-F0-9]{24}$/.test(taskId) ? taskId : undefined;
+}
+
+async function emitAutonomyTelemetry(input) {
+  const event = {
+    source: "heartbeat",
+    status: input.status,
+    eventType: input.eventType,
+    message: input.message,
+    dedupeKey: `${input.runId}:${input.dedupeSuffix}`,
+    assignee: "sherlock",
+    agentId: "sherlock",
+    sessionKey: input.sessionKey || undefined,
+    jobId: input.jobId || undefined,
+    taskId: asTaskIdOrUndefined(input.taskId),
+    metadata: {
+      runId: input.runId,
+      ...(input.metadata || {})
+    },
+    created_at: new Date().toISOString()
+  };
+
+  try {
+    await emitTelemetryEvents({
+      config: input.telemetryConfig,
+      events: [event]
+    });
+  } catch (error) {
+    // Keep autonomy execution resilient if Mission Control telemetry is unavailable.
+    input.logger.warn("Autonomy telemetry emit failed (non-fatal)", {
+      eventType: input.eventType,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
 async function main() {
+  await loadWorkspaceEnv(import.meta.url);
   const logger = createLogger("run-sherlock-autonomy");
   const argv = process.argv.slice(2);
   const dryRun = hasFlag(argv, "--dry-run");
   const skipTaskPoll = hasFlag(argv, "--skip-task-poll");
   const manualTaskDescription = getFlagValue(argv, "--task-description", "");
   const manualTaskName = getFlagValue(argv, "--task-name", "Manual directed task");
+  const runId = createRunId();
+  const telemetryConfig = getTelemetryConfig();
+  const telemetrySessionKey = String(process.env.OPENCLAW_SESSION_KEY || process.env.SHERLOCK_SESSION_KEY || "").trim();
+  const telemetryJobId = String(process.env.OPENCLAW_CRON_JOB_ID || process.env.SHERLOCK_CRON_JOB_ID || "").trim();
 
   const thisScriptPath = fileURLToPath(import.meta.url);
   const sherlockWorkspaceRoot = path.resolve(path.dirname(thisScriptPath), "../../../..");
@@ -223,6 +324,27 @@ async function main() {
   let cycle = null;
 
   try {
+    await emitAutonomyTelemetry({
+      telemetryConfig,
+      logger,
+      runId,
+      taskId: null,
+      sessionKey: telemetrySessionKey,
+      jobId: telemetryJobId,
+      eventType: "sherlock_autonomy_started",
+      status: "info",
+      dedupeSuffix: "autonomy_started",
+      message: "Sherlock autonomy run started.",
+      metadata: {
+        dryRun,
+        skipTaskPoll,
+        hasManualTask: Boolean(manualTaskDescription),
+        configuredFocusCount: configuredFocusLocations.length,
+        requestedMinIncidents,
+        requestedMaxPasses
+      }
+    });
+
     if (manualTaskDescription) {
       // Manual mode is used by smoke tests and controlled directed runs.
       task = {
@@ -239,6 +361,26 @@ async function main() {
         { allowFailure: dryRun }
       );
       const firstTask = Array.isArray(polled?.tasks) ? polled.tasks[0] : null;
+
+      await emitAutonomyTelemetry({
+        telemetryConfig,
+        logger,
+        runId,
+        taskId: firstTask?._id || null,
+        sessionKey: telemetrySessionKey,
+        jobId: telemetryJobId,
+        eventType: "sherlock_autonomy_task_poll",
+        status: firstTask ? "ok" : "skipped",
+        dedupeSuffix: "task_poll",
+        message: firstTask
+          ? `Sherlock found directed task ${String(firstTask._id)}.`
+          : "Sherlock found no directed tasks; running autonomous fallback.",
+        metadata: {
+          foundTask: Boolean(firstTask),
+          polledCount: Array.isArray(polled?.tasks) ? polled.tasks.length : 0
+        }
+      });
+
       if (firstTask && !dryRun) {
         const claimed = await runMissionControl(missionControlCliPath, "task_claim", [
           "--task-id",
@@ -251,6 +393,21 @@ async function main() {
         if (claimed?.ok === true && claimed?.claimed === true) {
           lifecycle.claimed = true;
           task = claimed.task || firstTask;
+          await emitAutonomyTelemetry({
+            telemetryConfig,
+            logger,
+            runId,
+            taskId: task?._id || null,
+            sessionKey: telemetrySessionKey,
+            jobId: telemetryJobId,
+            eventType: "sherlock_autonomy_task_claimed",
+            status: "ok",
+            dedupeSuffix: "task_claimed",
+            message: `Sherlock claimed directed task ${String(task._id)}.`,
+            metadata: {
+              taskName: task.task_name || task.taskName || null
+            }
+          });
         }
       }
     }
@@ -358,6 +515,46 @@ async function main() {
       finishedAt
     };
 
+    await emitAutonomyTelemetry({
+      telemetryConfig,
+      logger,
+      runId,
+      taskId: summary.task?.id || null,
+      sessionKey: telemetrySessionKey,
+      jobId: telemetryJobId,
+      eventType: "sherlock_autonomy_cycle_complete",
+      status: "ok",
+      dedupeSuffix: "cycle_complete",
+      message: "Sherlock autonomy cycle execution completed.",
+      metadata: {
+        mode: summary.mode,
+        accepted: Number(summary.cycle?.submission?.accepted || 0),
+        duplicates: Number(summary.cycle?.submission?.duplicates || 0),
+        failed: Number(summary.cycle?.submission?.failed || 0),
+        connectorErrorCount: Array.isArray(summary.cycle?.connectorErrors) ? summary.cycle.connectorErrors.length : 0,
+        lifecycle
+      }
+    });
+
+    await emitAutonomyTelemetry({
+      telemetryConfig,
+      logger,
+      runId,
+      taskId: summary.task?.id || null,
+      sessionKey: telemetrySessionKey,
+      jobId: telemetryJobId,
+      eventType: "sherlock_autonomy_completed",
+      status: "ok",
+      dedupeSuffix: "autonomy_completed",
+      message: `Sherlock autonomy run finished (${summary.mode}).`,
+      metadata: {
+        mode: summary.mode,
+        lifecycle,
+        startedAt,
+        finishedAt
+      }
+    });
+
     if (hasFlag(argv, "--json")) {
       process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
       return;
@@ -386,6 +583,22 @@ async function main() {
         // Keep failure handling best-effort to avoid masking the original error.
       }
     }
+
+    await emitAutonomyTelemetry({
+      telemetryConfig,
+      logger,
+      runId,
+      taskId: task?._id || null,
+      sessionKey: telemetrySessionKey,
+      jobId: telemetryJobId,
+      eventType: "sherlock_autonomy_failed",
+      status: "error",
+      dedupeSuffix: "autonomy_failed",
+      message: error instanceof Error ? `Sherlock autonomy failed: ${error.message}` : "Sherlock autonomy failed.",
+      metadata: {
+        lifecycle
+      }
+    });
 
     logger.error("Sherlock autonomy execution failed", {
       error: error instanceof Error ? error.message : String(error),

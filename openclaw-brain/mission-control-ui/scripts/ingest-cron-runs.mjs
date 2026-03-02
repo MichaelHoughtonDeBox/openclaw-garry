@@ -62,6 +62,9 @@ function deriveAssignee(sessionKey = "") {
   if (sessionKey.includes("agent:main:")) {
     return "garry"
   }
+  if (sessionKey.includes("agent:sherlock:")) {
+    return "sherlock"
+  }
   return undefined
 }
 

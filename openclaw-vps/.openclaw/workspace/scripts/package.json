@@ -25,6 +25,7 @@
     "sherlock:smoke": "node ./sherlock-smoke.mjs"
   },
   "dependencies": {
+    "@xdevplatform/xdk": "^0.5.0",
     "mongodb": "^6.21.0"
   },
   "devDependencies": {
