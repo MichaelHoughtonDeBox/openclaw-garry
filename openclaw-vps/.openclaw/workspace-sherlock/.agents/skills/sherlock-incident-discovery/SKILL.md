@@ -15,6 +15,7 @@ Use this skill to run one autonomous Sherlock cycle that:
 5. Persists connector cursor/checkpoint state for idempotent follow-up runs.
 6. Can run multi-pass search when initial evidence is insufficient.
 7. Backfills missing coordinates by geocoding location text before final rejection.
+8. Distinguishes incident-occurrence time from source-posted time for downstream alert gating.
 
 This skill is retained for backwards compatibility and controlled diagnostics.
 Primary heartbeat/cron flow should use tool-driven discovery plus `finalize-agentic-cycle.mjs`.
@@ -89,3 +90,5 @@ node /root/.openclaw/workspace-sherlock/.agents/skills/sherlock-incident-discove
 - Do not submit incidents without numeric latitude/longitude.
 - Do not submit incidents without source URL and source identifier.
 - Keep raw source snippets in metadata for auditability.
+- When known, include `incidentDateTime` (actual event time) in candidate payloads; keep `postedAt` for provenance.
+- Optionally include `verification` signals (`sourceReliability`, `corroborationCount`, `timeConfidence`, `geoConfidence`) to improve promotion quality.

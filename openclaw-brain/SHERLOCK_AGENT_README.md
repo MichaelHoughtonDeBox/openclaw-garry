@@ -31,7 +31,7 @@ Sherlock is a task-first, autonomous incident discovery agent that:
 8. Sherlock calls `finalize-agentic-cycle.mjs` to:
    - dedupe candidates,
    - geocode missing coordinates,
-   - normalise to Wolf ingest shape,
+   - normalise to Wolf ingest shape (incident time separated from provenance time),
    - submit to Wolf ingest,
    - update heartbeat autonomy state.
 9. If a task was claimed, Sherlock writes a Mongo document artefact and then completes or blocks the task.
@@ -71,6 +71,14 @@ Sherlock writes JSON shaped as:
       "sourceUrl": "https://example.com/source",
       "author": "Publisher name",
       "postedAt": "2026-02-16T10:30:00.000Z",
+      "incidentDateTime": "2026-02-15T21:40:00.000Z",
+      "incidentDateTimeConfidence": "explicit",
+      "verification": {
+        "sourceReliability": 0.72,
+        "corroborationCount": 2,
+        "timeConfidence": "explicit",
+        "geoConfidence": "exact"
+      },
       "summary": "Incident summary",
       "rawText": "Evidence text excerpt",
       "latitude": -26.2041,
@@ -83,6 +91,15 @@ Sherlock writes JSON shaped as:
   ]
 }
 ```
+
+`incidentDateTime` is the occurrence timestamp used for report `date/time/dateTime/localDateTime` and alert age-gating.
+`postedAt` remains source provenance and is stored under `source_data.source_posted_at`.
+
+`verification` signals are optional and feed confidence scoring for promotion decisions:
+- `sourceReliability` (0-1)
+- `corroborationCount` (integer)
+- `timeConfidence` (`explicit` | `inferred_source_posted_at` | `unknown`)
+- `geoConfidence` (`exact` | `approx` | `unknown`)
 
 ## Runtime Commands
 
@@ -120,6 +137,19 @@ Core OpenClaw vars:
 Core Wolf var:
 
 - `SHERLOCK_INGEST_TOKEN`
+- `SHERLOCK_MIN_DISTRIBUTION_CONFIDENCE`
+
+## Confidence-Gated Promotion
+
+Sherlock ingest persists all valid reports, then applies distribution gating with:
+- incident freshness (<= 30 minutes),
+- resolved incident time,
+- minimum confidence score threshold.
+
+Per-incident ingest responses include:
+- `distribution` (`sent` | `skipped_low_confidence` | `skipped_age_gate` | `skipped_unresolved_time` | `disabled`)
+- `confidenceScore`
+- `confidenceReasons`
 
 ## Security Model
 

@@ -18,11 +18,17 @@ const DESK_SPACING = 300 // Increased spacing for larger desks
 
 export function MissionRoomPixel({ health, queueSize, focusedAssignee, onFocusAssignee }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const bgRef = useRef<HTMLDivElement>(null)
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === "dark"
 
   // Day/Night Cycle State
   const [timePhase, setTimePhase] = useState<TimePhase>('day')
+
+  // Drag-to-scroll state
+  const [isDragging, setIsDragging] = useState(false)
+  const [startX, setStartX] = useState(0)
+  const [scrollLeft, setScrollLeft] = useState(0)
 
   useEffect(() => {
     const updateTime = () => {
@@ -45,11 +51,36 @@ export function MissionRoomPixel({ health, queueSize, focusedAssignee, onFocusAs
       if (index !== -1) {
         const deskX = index * DESK_SPACING + 100
         const container = scrollRef.current
-        const scrollLeft = deskX - container.clientWidth / 2 + 48 // 48 is half of new agent width
-        container.scrollTo({ left: scrollLeft, behavior: 'smooth' })
+        const targetScrollLeft = deskX - container.clientWidth / 2 + 48 // 48 is half of new agent width
+        container.scrollTo({ left: targetScrollLeft, behavior: 'smooth' })
       }
     }
   }, [focusedAssignee, health])
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (bgRef.current) {
+      // Parallax effect for the background
+      bgRef.current.style.transform = `translateX(-${e.currentTarget.scrollLeft * 0.3}px)`
+    }
+  }
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (!scrollRef.current) return
+    setIsDragging(true)
+    setStartX(e.pageX - scrollRef.current.offsetLeft)
+    setScrollLeft(scrollRef.current.scrollLeft)
+  }
+
+  const handleMouseLeave = () => setIsDragging(false)
+  const handleMouseUp = () => setIsDragging(false)
+  
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !scrollRef.current) return
+    e.preventDefault()
+    const x = e.pageX - scrollRef.current.offsetLeft
+    const walk = (x - startX) * 1.5 // Scroll speed multiplier
+    scrollRef.current.scrollLeft = scrollLeft - walk
+  }
 
   // Return null if no agents to render
   if (!health.length) return null
@@ -58,8 +89,7 @@ export function MissionRoomPixel({ health, queueSize, focusedAssignee, onFocusAs
 
   return (
     <div 
-      className="fixed bottom-0 left-0 w-full h-[240px] z-50 pointer-events-none overflow-x-auto overflow-y-hidden select-none custom-scrollbar transition-colors duration-1000" 
-      ref={scrollRef}
+      className="fixed bottom-0 left-0 w-full h-[240px] z-50 pointer-events-none select-none transition-colors duration-1000" 
       style={{ 
         imageRendering: "pixelated",
         background: `linear-gradient(to top, ${colors.bg} 0%, ${colors.bg} 60%, transparent 100%)`
@@ -84,20 +114,23 @@ export function MissionRoomPixel({ health, queueSize, focusedAssignee, onFocusAs
         }
         .animate-crate { animation: move-crate 40s linear infinite; }
         
-        /* Hide scrollbar since it's an overlay */
+        /* Subtle scrollbar for the foreground container */
         .custom-scrollbar::-webkit-scrollbar {
-          display: none;
+          height: 6px;
+          background: transparent;
         }
-        .custom-scrollbar {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(150, 150, 150, 0.2);
+          border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(150, 150, 150, 0.5);
         }
       `}</style>
       
-      {/* Container to hold the wide scrolling content */}
-      <div className="relative h-full" style={{ width: `${totalWidth}px` }}>
-        {/* Background Layers */}
-        <div className="absolute top-0 left-0 h-full w-full pointer-events-none">
+      {/* Background Layers (Pointer Events None so clicks pass through to dashboard above) */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div ref={bgRef} className="relative h-full" style={{ width: `${totalWidth}px` }}>
           <div className="absolute top-[10%] left-0 w-full h-[50%] opacity-40">
             <PixelMountains phase={timePhase} isDark={isDark} />
           </div>
@@ -105,97 +138,110 @@ export function MissionRoomPixel({ health, queueSize, focusedAssignee, onFocusAs
             <PixelBuildings phase={timePhase} isDark={isDark} />
           </div>
         </div>
+      </div>
 
-        {/* Conveyor Belt Ground */}
-        <div 
-          className="absolute bottom-0 left-0 h-[20%] w-full border-t-[4px] pointer-events-none transition-colors duration-1000 z-0" 
-          style={{ backgroundColor: isDark ? '#111' : '#ccc', borderColor: colors.buildings }}
-        >
-          {/* Belt texture */}
+      {/* Foreground Scrollable Area (Pointer Events Auto so you can scroll/drag it) */}
+      <div 
+        ref={scrollRef}
+        onScroll={handleScroll}
+        onMouseDown={handleMouseDown}
+        onMouseLeave={handleMouseLeave}
+        onMouseUp={handleMouseUp}
+        onMouseMove={handleMouseMove}
+        className={`absolute bottom-0 left-0 w-full h-[150px] pointer-events-auto overflow-x-auto overflow-y-hidden custom-scrollbar ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+      >
+        <div className="relative h-full" style={{ width: `${totalWidth}px` }}>
+          {/* Conveyor Belt Ground */}
           <div 
-            className="absolute top-2 left-0 w-full h-2 opacity-40 animate-belt" 
-            style={{ 
-              backgroundImage: `linear-gradient(to right, ${colors.primary} 50%, transparent 50%)`, 
-              backgroundSize: '64px 100%',
-            }} 
-          />
-          <div 
-            className="absolute top-6 left-0 w-full h-1 opacity-20 animate-belt" 
-            style={{ 
-              backgroundImage: `linear-gradient(to right, ${colors.primary} 50%, transparent 50%)`, 
-              backgroundSize: '32px 100%',
-            }} 
-          />
-        </div>
-
-        {/* Global Queue: Moving Crates on Conveyor Belt */}
-        {Array.from({ length: Math.min(queueSize, 15) }).map((_, i) => (
-          <div 
-            key={`queue-crate-${i}`} 
-            className="absolute bottom-2 w-8 h-8 opacity-90 animate-crate z-10"
-            style={{ 
-              animationDelay: `${i * -3.7}s`,
-              left: '-50px', // Start offscreen left
-            }}
+            className="absolute bottom-0 left-0 h-[48px] w-full border-t-[4px] pointer-events-none transition-colors duration-1000 z-0" 
+            style={{ backgroundColor: isDark ? '#111' : '#ccc', borderColor: colors.buildings }}
           >
-            <PixelCrate isDark={isDark} />
+            {/* Belt texture */}
+            <div 
+              className="absolute top-2 left-0 w-full h-2 opacity-40 animate-belt" 
+              style={{ 
+                backgroundImage: `linear-gradient(to right, ${colors.primary} 50%, transparent 50%)`, 
+                backgroundSize: '64px 100%',
+              }} 
+            />
+            <div 
+              className="absolute top-6 left-0 w-full h-1 opacity-20 animate-belt" 
+              style={{ 
+                backgroundImage: `linear-gradient(to right, ${colors.primary} 50%, transparent 50%)`, 
+                backgroundSize: '32px 100%',
+              }} 
+            />
           </div>
-        ))}
 
-        {/* Agent Todo Piles (Stacked next to their desks) */}
-        <div className="absolute bottom-[20%] left-0 h-24 w-full pointer-events-none z-10">
-          {health.map((agent, i) => {
-            const deskX = i * DESK_SPACING + 100
-            const todoCount = agent.taskCounts.todo
-            return Array.from({ length: Math.min(todoCount, 12) }).map((_, j) => {
-              const row = j % 3
-              const col = Math.floor(j / 3)
+          {/* Global Queue: Moving Crates on Conveyor Belt */}
+          {Array.from({ length: Math.min(queueSize, 15) }).map((_, i) => (
+            <div 
+              key={`queue-crate-${i}`} 
+              className="absolute bottom-2 w-8 h-8 opacity-90 animate-crate z-10 pointer-events-none"
+              style={{ 
+                animationDelay: `${i * -3.7}s`,
+                left: '-50px', // Start offscreen left
+              }}
+            >
+              <PixelCrate isDark={isDark} />
+            </div>
+          ))}
+
+          {/* Agent Todo Piles (Stacked next to their desks) */}
+          <div className="absolute bottom-[48px] left-0 h-[96px] w-full pointer-events-none z-10">
+            {health.map((agent, i) => {
+              const deskX = i * DESK_SPACING + 100
+              const todoCount = agent.taskCounts.todo
+              return Array.from({ length: Math.min(todoCount, 12) }).map((_, j) => {
+                const row = j % 3
+                const col = Math.floor(j / 3)
+                return (
+                  <div 
+                    key={`agent-${agent.assignee}-crate-${j}`} 
+                    className="absolute w-8 h-8 opacity-90"
+                    style={{ 
+                      left: deskX - 48 + row * 16 + (col % 2) * 8, 
+                      bottom: col * 20,
+                      zIndex: 20 - col
+                    }}
+                  >
+                    <PixelCrate isDark={isDark} />
+                  </div>
+                )
+              })
+            })}
+          </div>
+
+          {/* Desks Layer */}
+          <div className="absolute bottom-[48px] left-0 h-[96px] w-full pointer-events-none z-20">
+            {health.map((agent, i) => {
+              const deskX = i * DESK_SPACING + 100
+              const loadout = getAgentLoadout(agent.assignee)
               return (
-                <div 
-                  key={`agent-${agent.assignee}-crate-${j}`} 
-                  className="absolute w-8 h-8 opacity-90"
-                  style={{ 
-                    left: deskX - 48 + row * 16 + (col % 2) * 8, 
-                    bottom: col * 20,
-                    zIndex: 20 - col
-                  }}
-                >
-                  <PixelCrate isDark={isDark} />
+                <div key={`desk-${agent.assignee}`} className="absolute bottom-0 w-24 h-24 opacity-90" style={{ left: deskX }}>
+                  <ModularDesk level={loadout.level} todoCount={agent.taskCounts.todo} isDark={isDark} />
                 </div>
               )
-            })
-          })}
-        </div>
+            })}
+          </div>
 
-        {/* Desks Layer */}
-        <div className="absolute bottom-[20%] left-0 h-24 w-full pointer-events-none z-20">
-          {health.map((agent, i) => {
-            const deskX = i * DESK_SPACING + 100
-            const loadout = getAgentLoadout(agent.assignee)
-            return (
-              <div key={`desk-${agent.assignee}`} className="absolute bottom-0 w-24 h-24 opacity-90" style={{ left: deskX }}>
-                <ModularDesk level={loadout.level} todoCount={agent.taskCounts.todo} isDark={isDark} />
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Agents Layer - Must be pointer-events-auto to catch clicks */}
-        <div className="absolute bottom-[20%] left-0 h-24 w-full pointer-events-none z-30">
-          {health.map((agent, i) => {
-            const deskX = i * DESK_SPACING + 100
-            return (
-              <AgentCharacterPixel
-                key={agent.assignee}
-                agent={agent}
-                focused={focusedAssignee === agent.assignee}
-                onFocus={() => onFocusAssignee(agent.assignee)}
-                deskX={deskX}
-                totalWidth={totalWidth}
-                isDark={isDark}
-              />
-            )
-          })}
+          {/* Agents Layer - Must be pointer-events-auto to catch clicks */}
+          <div className="absolute bottom-[48px] left-0 h-[96px] w-full pointer-events-none z-30">
+            {health.map((agent, i) => {
+              const deskX = i * DESK_SPACING + 100
+              return (
+                <AgentCharacterPixel
+                  key={agent.assignee}
+                  agent={agent}
+                  focused={focusedAssignee === agent.assignee}
+                  onFocus={() => onFocusAssignee(agent.assignee)}
+                  deskX={deskX}
+                  totalWidth={totalWidth}
+                  isDark={isDark}
+                />
+              )
+            })}
+          </div>
         </div>
       </div>
     </div>

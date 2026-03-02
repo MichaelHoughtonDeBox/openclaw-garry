@@ -212,7 +212,7 @@ Keep keys stable so heartbeat automation, smoke tests, and task orchestration st
       "sourceUrl": "https://example.com/source",
       "author": "Publisher name",
       "postedAt": "2026-02-16T10:30:00.000Z",
-      "summary": "Short but complete incident summary.",
+      "summary": "Incident-report sentence describing the occurrence event (not a news headline or legal outcome update).",
       "rawText": "Longer evidence text for type inference and traceability.",
       "latitude": -26.2041,
       "longitude": 28.0473,
@@ -224,6 +224,10 @@ Keep keys stable so heartbeat automation, smoke tests, and task orchestration st
   ]
 }
 ```
+
+Notes:
+- `sourcePlatform` may be `web` or `x`.
+- `connector` may be `agentic-tools` (manual web flow) or `xdk-tools` (TypeScript XDK X collector).
 
 ## 7) `sherlock-autonomy-orchestrator` finalizer (`finalize-agentic-cycle.mjs`)
 
